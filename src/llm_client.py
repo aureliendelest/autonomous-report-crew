@@ -12,7 +12,7 @@ GROQ_MODEL = "openai/gpt-oss-120b"
 # Modèle de secours sur OpenRouter, utilisé uniquement quand le quota Groq est
 # épuisé. À revérifier sur https://openrouter.ai/models si ce modèle gratuit
 # n'est plus disponible (leur catalogue évolue, comme celui de Groq).
-OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
+OPENROUTER_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
 
 MAX_RATE_LIMIT_RETRIES = 3
 MAX_RETRY_WAIT_SECONDS = 20
