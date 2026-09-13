@@ -38,4 +38,6 @@ def run_redacteur(topic: str, domain: str, research: str, critique: str) -> str:
         f"Nous sommes le {_today()}.\n\n"
         f"Sujet : {topic}\n\nRecherches :\n{research}\n\nAvis du Critique :\n{critique}"
     )
-    return llm_client.call_agent(system, user_message)
+    # Le rapport final (tableaux + prose) dépasse souvent le budget par défaut,
+    # surtout avec le modèle de secours OpenRouter, plus verbeux.
+    return llm_client.call_agent(system, user_message, max_tokens=1500)
