@@ -1,12 +1,14 @@
 import json
 import os
+import time
 
 from dotenv import load_dotenv
-from groq import Groq
+from groq import Groq, RateLimitError
 
 load_dotenv()
 
 MODEL = "openai/gpt-oss-120b"
+MAX_RATE_LIMIT_RETRIES = 3
 
 
 def get_client() -> Groq:
@@ -15,6 +17,18 @@ def get_client() -> Groq:
             "GROQ_API_KEY n'est pas défini. Copie .env.example vers .env et renseigne ta clé."
         )
     return Groq()
+
+
+def _create_with_retry(client: Groq, **kwargs):
+    for attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
+        try:
+            return client.chat.completions.create(**kwargs)
+        except RateLimitError as e:
+            if attempt == MAX_RATE_LIMIT_RETRIES:
+                raise
+            wait_seconds = float(e.response.headers.get("retry-after", 2))
+            print(f"[llm_client] limite de débit atteinte, nouvelle tentative dans {wait_seconds:.1f}s")
+            time.sleep(wait_seconds)
 
 
 def call_agent(
@@ -36,7 +50,7 @@ def call_agent(
     if tools:
         kwargs["tools"] = tools
 
-    response = client.chat.completions.create(**kwargs)
+    response = _create_with_retry(client, **kwargs)
     message = response.choices[0].message
 
     # Contrairement au web_search serveur d'Anthropic, Groq utilise le function
@@ -55,7 +69,7 @@ def call_agent(
                     "content": result,
                 }
             )
-        response = client.chat.completions.create(**kwargs)
+        response = _create_with_retry(client, **kwargs)
         message = response.choices[0].message
 
     return message.content or ""
