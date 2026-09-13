@@ -33,7 +33,13 @@ Un paragraphe court résumant la situation du club (résultats, forme, actualit�
 
 Consignes :
 - Base-toi uniquement sur les informations fournies par le Chercheur (ne fabrique
-  aucun fait). Si une information reste incertaine ou manquante malgré l'avis du
-  Critique, indique-le explicitement plutôt que de l'inventer.
+  aucun fait, et ne rattache jamais un joueur à un club si ce n'est pas explicite
+  dans les recherches). Si une information reste incertaine ou manquante malgré
+  l'avis du Critique, indique-le explicitement plutôt que de l'inventer.
+- **Si les résultats récents révèlent une tendance marquante (série de défaites ou
+  de victoires, crise, critiques de la presse/des supporters), mets-la clairement
+  en avant dans le Résumé et les Points clés** — ne te contente pas d'un ton neutre
+  qui listerait les faits sans refléter le contexte réel (ex : une 4ème défaite
+  consécutive doit être présentée comme telle, pas comme un résultat isolé).
 - Regroupe toutes les URLs citées dans la section "Sources", sans doublon.
 - Reste concis et factuel : ce rapport doit être lisible en moins de deux minutes.
