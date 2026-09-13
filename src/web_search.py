@@ -34,7 +34,9 @@ MAX_CONTENT_CHARS = 500
 
 def web_search(query: str) -> str:
     client = get_tavily_client()
-    response = client.search(query=query, max_results=3)
+    response = client.search(
+        query=query, max_results=3, topic="news", time_range="month"
+    )
 
     lines = []
     for result in response["results"]:

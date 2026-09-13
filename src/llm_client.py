@@ -6,7 +6,7 @@ from groq import Groq
 
 load_dotenv()
 
-MODEL = "openai/gpt-oss-20b"
+MODEL = "openai/gpt-oss-120b"
 
 
 def get_client() -> Groq:
