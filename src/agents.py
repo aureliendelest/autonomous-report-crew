@@ -32,12 +32,24 @@ def run_critique(topic: str, domain: str, research: str) -> str:
     return llm_client.call_agent(system, user_message)
 
 
-def run_redacteur(topic: str, domain: str, research: str, critique: str) -> str:
+def run_redacteur(
+    topic: str, domain: str, research: str, critique: str, incomplete: bool = False
+) -> str:
     system = prompts.load_prompt(domain, "redacteur")
     user_message = (
         f"Nous sommes le {_today()}.\n\n"
         f"Sujet : {topic}\n\nRecherches :\n{research}\n\nAvis du Critique :\n{critique}"
     )
+    if incomplete:
+        user_message += (
+            "\n\nLe Critique n'a pas validé ces recherches malgré plusieurs tentatives "
+            "(les points qu'il soulève ci-dessus n'ont pas pu être résolus). "
+            "Rédige quand même le rapport final avec les informations disponibles, "
+            "en indiquant clairement dans le Résumé que certains points restent "
+            "incertains ou non vérifiés plutôt que de les passer sous silence. "
+            "N'inclus jamais le texte de l'avis du Critique tel quel : reformule "
+            "uniquement ce qui concerne le lecteur du rapport."
+        )
     # Le rapport final (tableaux + prose) dépasse souvent le budget par défaut,
     # surtout avec le modèle de secours OpenRouter, plus verbeux.
     return llm_client.call_agent(system, user_message, max_tokens=1500)

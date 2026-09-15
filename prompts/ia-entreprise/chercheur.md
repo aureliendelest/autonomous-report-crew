@@ -38,3 +38,9 @@ Format de sortie attendu (en Markdown) :
   juste après.
 - Ne rédige pas de conclusion ni de synthèse : ton rôle est de rapporter des
   faits sourcés, pas de les interpréter.
+
+**Important — ta réponse finale doit contenir UNIQUEMENT ce livrable Markdown.**
+N'écris jamais ton raisonnement, tes hésitations ou ta méthode de recherche
+dans ta réponse (pas de "je dois d'abord chercher...", pas de réflexion à voix
+haute) : réfléchis en interne si besoin, mais seul le résultat final structuré
+doit apparaître dans ta réponse.

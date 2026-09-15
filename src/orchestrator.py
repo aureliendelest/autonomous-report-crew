@@ -30,12 +30,16 @@ def run_pipeline(
     steps.append(("Chercheur — tour 1", research))
 
     critique = ""
+    validated = False
     for i in range(MAX_RESEARCH_LOOPS + 1):
         notify(f"[Critique] relecture (tour {i + 1})")
         critique = agents.run_critique(topic, domain, research)
         steps.append((f"Critique — tour {i + 1}", critique))
 
-        if critique.strip().startswith("STATUT: OK") or i == MAX_RESEARCH_LOOPS:
+        if critique.strip().startswith("STATUT: OK"):
+            validated = True
+            break
+        if i == MAX_RESEARCH_LOOPS:
             break
 
         notify("[Critique] demande des recherches complémentaires, on relance le Chercheur")
@@ -43,7 +47,7 @@ def run_pipeline(
         steps.append((f"Chercheur — tour {i + 2}", research))
 
     notify("[Rédacteur] rédaction du rapport final")
-    report = agents.run_redacteur(topic, domain, research, critique)
+    report = agents.run_redacteur(topic, domain, research, critique, incomplete=not validated)
 
     OUTPUTS_DIR.mkdir(exist_ok=True)
     slug = topic.lower().replace(" ", "-")
