@@ -15,10 +15,15 @@ def main():
         default="football",
         help="Domaine de prompts à utiliser (dossier sous /prompts)",
     )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Désactive le cache disque des recherches Tavily (.cache/)",
+    )
     args = parser.parse_args()
 
     try:
-        run_pipeline(args.topic, args.domain)
+        run_pipeline(args.topic, args.domain, use_cache=not args.no_cache)
     except RuntimeError as e:
         print(f"Erreur : {e}")
         raise SystemExit(1)

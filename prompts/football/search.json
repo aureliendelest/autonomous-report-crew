@@ -1,0 +1,6 @@
+{
+  "topic": "news",
+  "time_range": "week",
+  "max_results": 3,
+  "search_depth": "basic"
+}
