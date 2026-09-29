@@ -43,7 +43,7 @@ def run_pipeline(
             break
 
         notify("[Critique] demande des recherches complémentaires, on relance le Chercheur")
-        research = agents.run_chercheur(topic, domain, feedback=critique)
+        research = agents.run_chercheur(topic, domain, feedback=critique, previous_research=research)
         steps.append((f"Chercheur — tour {i + 2}", research))
 
     notify("[Rédacteur] rédaction du rapport final")

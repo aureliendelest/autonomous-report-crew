@@ -1,26 +1,83 @@
+import re
 from datetime import date
 
 from . import llm_client, prompts
 from .web_search import TAVILY_TOOL_SCHEMA, web_search
+
+URL_RE = re.compile(r"https?://[^\s\)\]\>\"'】]+")
+
+
+def _extract_urls(text: str) -> set[str]:
+    return {url.rstrip(".,;:)]}>»") for url in URL_RE.findall(text)}
+
+# Fenêtre de recherche par domaine : le football a besoin des tout derniers
+# résultats (sinon on retombe sur d'anciens matchs), tandis que l'ia-entreprise
+# a besoin de remonter plus loin pour trouver rapports d'étude, communiqués de
+# presse et pages officielles, qui ne sont pas toujours publiés dans la semaine
+# ni classés "actualité" par Tavily.
+SEARCH_CONFIG_BY_DOMAIN = {
+    "football": {"topic": "news", "time_range": "week"},
+    "ia-entreprise": {"topic": "general", "time_range": "year"},
+}
+DEFAULT_SEARCH_CONFIG = {"topic": "news", "time_range": "week"}
 
 
 def _today() -> str:
     return date.today().strftime("%d %B %Y")
 
 
-def run_chercheur(topic: str, domain: str, feedback: str | None = None) -> str:
+def run_chercheur(
+    topic: str,
+    domain: str,
+    feedback: str | None = None,
+    previous_research: str | None = None,
+) -> str:
     system = prompts.load_prompt(domain, "chercheur")
     user_message = f"Nous sommes le {_today()}.\n\nSujet : {topic}"
+    if previous_research:
+        user_message += (
+            f"\n\nTes recherches précédentes :\n{previous_research}\n\n"
+            "Conserve les informations ci-dessus qui n'ont pas été signalées "
+            "comme problématiques : ne relance pas une recherche sur ce qui "
+            "est déjà validé, complète uniquement ce qui manque."
+        )
     if feedback:
         user_message += (
             f"\n\nLe critique a demandé des recherches complémentaires :\n{feedback}"
         )
-    return llm_client.call_agent(
+
+    search_config = SEARCH_CONFIG_BY_DOMAIN.get(domain, DEFAULT_SEARCH_CONFIG)
+    seen_urls: set[str] = set()
+
+    def scoped_web_search(query: str) -> str:
+        result = web_search(query, **search_config)
+        seen_urls.update(_extract_urls(result))
+        return result
+
+    research = llm_client.call_agent(
         system,
         user_message,
         tools=[TAVILY_TOOL_SCHEMA],
-        tool_executors={"web_search": web_search},
+        tool_executors={"web_search": scoped_web_search},
     )
+
+    # Garde-fou anti-hallucination : un LLM peut citer une URL plausible mais
+    # jamais retournée par une vraie recherche, surtout sous pression du
+    # Critique qui en redemande. On ne peut pas compter sur le seul prompt
+    # pour l'en empêcher, donc on vérifie ici, en code, que chaque URL citée
+    # provient bien d'un résultat de web_search réellement obtenu.
+    fabricated_urls = _extract_urls(research) - seen_urls
+    if fabricated_urls:
+        research += (
+            "\n\n**⚠️ Alerte automatique (vérification technique, pas le Chercheur) "
+            "— URLs non vérifiées :** les URLs suivantes apparaissent ci-dessus "
+            "mais ne proviennent d'aucun résultat de recherche web réel obtenu "
+            "durant cette session ; elles sont probablement fabriquées et ne "
+            "doivent pas être considérées comme fiables :\n"
+            + "\n".join(f"- {url}" for url in sorted(fabricated_urls))
+        )
+
+    return research
 
 
 def run_critique(topic: str, domain: str, research: str) -> str:

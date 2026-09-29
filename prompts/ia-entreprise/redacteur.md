@@ -44,5 +44,9 @@ Consignes :
   dans le Résumé — ne te contente pas d'un ton promotionnel qui ignorerait les
   limites ou les risques rapportés.
 - Regroupe toutes les URLs citées dans la section "Sources", sans doublon.
+- **Si une "⚠️ Alerte automatique — URLs non vérifiées" apparaît dans les
+  recherches, n'inclus JAMAIS les URLs qu'elle liste ni les informations qui
+  ne reposent que sur elles** : c'est un contrôle technique fiable, pas une
+  opinion à pondérer.
 - Reste concis et factuel : ce rapport doit être lisible en moins de deux
   minutes.

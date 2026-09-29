@@ -35,13 +35,13 @@ MAX_CONTENT_CHARS = 500
 MAX_TIMEOUT_RETRIES = 2
 
 
-def web_search(query: str) -> str:
+def web_search(query: str, topic: str = "news", time_range: str = "week") -> str:
     client = get_tavily_client()
 
     for attempt in range(MAX_TIMEOUT_RETRIES + 1):
         try:
             response = client.search(
-                query=query, max_results=3, topic="news", time_range="month"
+                query=query, max_results=3, topic=topic, time_range=time_range
             )
             break
         except TavilyTimeoutError:

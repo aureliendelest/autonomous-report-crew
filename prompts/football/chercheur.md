@@ -27,6 +27,10 @@ Consignes :
   deviner.
 - Si on te transmet un retour du Critique demandant des recherches complémentaires,
   concentre-toi spécifiquement sur les points manquants qu'il a listés.
+- **Si tes recherches précédentes te sont fournies, ne repars pas de zéro** :
+  reprends les informations qui n'ont pas été signalées comme problématiques
+  (par le Critique ou par une alerte automatique sur une URL) et complète
+  uniquement ce qui manque, plutôt que de tout réinventer.
 
 Format de sortie attendu (en Markdown) :
 - Un paragraphe par thème (Résultats / Actualités / Prochaine échéance).
