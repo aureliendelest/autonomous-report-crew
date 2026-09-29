@@ -84,6 +84,43 @@ Commit the log update together with the fix (e.g. "fix rate limit, update proble
 - **Rule**: any new tool must have a schema (like `TAVILY_TOOL_SCHEMA`) AND a
   Python function registered in `tool_executors`.
 
+### A7. A single exhausted Groq model forced an early switch to OpenRouter
+- **Symptom**: as soon as the one Groq model in use hit its daily quota, the
+  whole pipeline fell back to OpenRouter for the rest of the day, even though
+  Groq's free tier actually offers several separate models, each with its own
+  separate daily quota.
+- **Cause**: `GROQ_MODEL` was a single constant; there was no way to try a
+  second Groq model before giving up on Groq entirely.
+- **Solution**: `GROQ_MODELS` is now an ordered list (best model first). A
+  `RateLimitError` on one model moves to the next one in the list instead of
+  switching provider immediately; OpenRouter is only used once every Groq
+  model in the list is exhausted. Models already seen as exhausted during the
+  current run are remembered in `_exhausted_models` so later turns don't
+  retry (and re-wait on) a model that is known to be dead for the day.
+- **Where**: `src/llm_client.py` (`GROQ_MODELS`, `_exhausted_models`,
+  `_create_completion`).
+- **Rule**: `_exhausted_models` is process-local (reset on every run) — this
+  is intentional, since a daily quota can't be checked cheaply ahead of time.
+  Don't try to persist it across runs. Keep `gpt-oss-safeguard-*` variants out
+  of `GROQ_MODELS`: they are moderation-only models, not meant for writing
+  reports.
+
+### A8. Runaway tool-call loop
+- **Symptom**: a single report triggered around 30 web searches before the
+  Researcher finally produced a deliverable.
+- **Cause**: nothing capped how many times a model could call `web_search` in
+  a row; a model that struggles to conclude just keeps searching.
+- **Solution**: `MAX_TOOL_CALLS = 6`. Once reached, the pipeline appends a
+  user message asking the model to conclude with what it already has, and
+  forces the next call with `tool_choice="none"` — `tools` must still be sent
+  in that request (Groq returns a 400 "Tool choice is none, but model called
+  a tool" if the history contains tool calls but `tools` is dropped).
+- **Where**: `src/llm_client.py` (`MAX_TOOL_CALLS`, `call_agent`,
+  `_create_completion`'s `force_no_tool` parameter).
+- **Rule**: never remove `tools` from a request once the conversation history
+  contains a tool call — use `tool_choice="none"` to stop further tool use
+  instead of omitting `tools`.
+
 ---
 
 ## B. Web search (Tavily)
@@ -104,6 +141,25 @@ Commit the log update together with the fix (e.g. "fix rate limit, update proble
   propagate.
 - **Where**: `src/web_search.py` (`MAX_TIMEOUT_RETRIES`).
 - **Rule**: always cap retries so as not to burn through the Tavily quota.
+
+### B3. Iterating on prompts paid for the same Tavily search over and over
+- **Symptom**: re-running the pipeline to tweak a prompt (Critic wording,
+  Writer tone, etc.) re-ran the same web searches every time, burning through
+  the Tavily quota for no new information.
+- **Cause**: `web_search` always hit the Tavily API directly, with no way to
+  reuse a previous response for an identical query.
+- **Solution**: a disk cache under `.cache/`, keyed by a SHA-256 hash of the
+  sorted `{query, topic, time_range, max_results, search_depth}` payload (sorting
+  keys makes the hash stable regardless of argument order). `web_search` now
+  also returns a `meta` dict (`cached`, `result_count`, `urls`) alongside the
+  formatted text, so the caller can tell a cache hit from a real request.
+  `--no-cache` on the CLI disables it end-to-end.
+- **Where**: `src/web_search.py` (`_cache_key`, `_read_cache`, `_write_cache`),
+  `main.py` (`--no-cache`), `.gitignore` (`.cache/`).
+- **Rule**: the cache is never committed. Any new parameter that changes what
+  Tavily returns (e.g. a new `search_depth` value) must be added to the
+  `_cache_key` payload, otherwise stale results get served under a query that
+  looks new.
 
 ---
 
@@ -135,6 +191,28 @@ Commit the log update together with the fix (e.g. "fix rate limit, update proble
 - **Where**: `src/orchestrator.py` (`_format_audit_log`).
 - **Rule**: any new pipeline step must be added to `steps` to appear in the
   audit log.
+
+### C4. The audit log couldn't answer "where did the tokens and time go?"
+- **Symptom**: `.audit.md` showed the content of each step, but not which
+  provider answered, how many tokens were used, how long a step took, or
+  whether a search hit the cache — all needed to reason about cost before
+  building the evaluation described in the roadmap.
+- **Cause**: `call_agent` and `web_search` never reported their own metrics
+  anywhere; nothing recorded them.
+- **Solution**: `call_agent`, `run_chercheur`, `run_critique` and
+  `run_redacteur` all take an optional `on_call` callback. The orchestrator's
+  `_new_step_recorder()` collects the raw events for one agent turn (LLM
+  calls with provider/tokens/duration, tool calls with query/cache hit/result
+  count) and reduces them into one summary per turn. Every run now writes a
+  structured `<run>.trace.json` next to the report, and `.audit.md` renders a
+  human-readable line from that same trace instead of guessing.
+- **Where**: `src/llm_client.py` (`_timed_completion`, `on_call` param),
+  `src/agents.py` (`on_call` threaded through the three `run_*` functions),
+  `src/orchestrator.py` (`_new_step_recorder`, `_format_audit_log`).
+- **Rule**: `.audit.md` must stay a rendering of `trace.json`, never a second
+  source of truth computed independently — otherwise the two will drift.
+  Any new metric worth tracking goes into the event dict passed to `on_call`,
+  not directly into `_format_audit_log`.
 
 ---
 
@@ -197,8 +275,30 @@ Commit the log update together with the fix (e.g. "fix rate limit, update proble
 
 ---
 
+## E. Configuration
+
+### E1. Per-domain search settings were hardcoded in Python
+- **Symptom**: adding or tuning a domain's search behavior (topic,
+  time range, result count, search depth) meant editing `src/agents.py`
+  directly, in a dict (`SEARCH_CONFIG_BY_DOMAIN`) that lived far from the
+  domain's own prompts.
+- **Cause**: the search window fix in D1/B1 was implemented as a Python
+  constant instead of domain configuration, so it didn't follow the same
+  "only prompts differ between domains" rule as the rest of `/prompts`.
+- **Solution**: each domain now has its own `prompts/<domain>/search.json`
+  (`topic`, `time_range`, `max_results`, `search_depth`), loaded by
+  `prompts.load_search_config(domain)`. A domain with no `search.json` falls
+  back to `DEFAULT_SEARCH_CONFIG` with a console warning, instead of failing.
+- **Where**: `src/prompts.py` (`load_search_config`, `DEFAULT_SEARCH_CONFIG`),
+  `prompts/football/search.json`, `prompts/ia-entreprise/search.json`.
+- **Rule**: any new domain should get its own `search.json`. Don't add a new
+  per-domain branch to Python code for something that's just configuration —
+  put it in `/prompts/<domain>/` next to that domain's other files.
+
+---
+
 ## Checklist before committing
-- [ ] The solved problem is documented in the right section (A to D) using
+- [ ] The solved problem is documented in the right section (A to E) using
       the format above
 - [ ] No model, quota, or cap was changed without updating the relevant entry
 - [ ] `git status` checked: no `.env` or temporary files included

@@ -37,19 +37,25 @@ substantive content.
 
 ## Roadmap (development sessions)
 
-- **Session 1**: multi-step agent on the command line, single domain
+- **Session 1** (done): multi-step agent on the command line, single domain
   (football), no interface.
-- **Session 2**: adding a simple front-end (Streamlit) with domain selection
-  from a pre-configured list (football, AI in business).
-- **Session 3** (optional): dynamic creation of new domains from the
-  interface (automatic generation of system prompts).
+- **Session 2** (done): adding a simple front-end (Streamlit) with domain
+  selection from a pre-configured list (football, AI in business).
+- **Session 3 and beyond**: see [`docs/roadmap.md`](docs/roadmap.md) for the
+  up-to-date detail (paying down technical debt, tracing, measured
+  evaluation, measurement-guided improvements, polish). That file is the
+  reference to check at the start of a session to see where things stand —
+  this section only keeps a high-level summary.
 
 ## Tech stack
 - Python 3.x
-- Anthropic API (`anthropic` SDK, Claude model)
-- Web search: [to be specified based on the implementation chosen in session 1]
-- Interface (session 2+): Streamlit
-- Secrets management: `.env` file (never committed), see `.env.example`
+- LLM: Groq (`groq` SDK) as the primary provider, with automatic fallback to
+  OpenRouter (`openai` SDK, OpenAI-compatible API) when the quota is
+  exhausted — see `src/llm_client.py`.
+- Web search: Tavily (`tavily-python`), with per-domain configuration
+  (`prompts/<domain>/search.json`).
+- Interface (session 2+): Streamlit.
+- Secrets management: `.env` file (never committed), see `.env.example`.
 
 ## Project structure
 /src → source code (agents, orchestration, API calls)
@@ -90,6 +96,4 @@ in [docs/problem-log.md](docs/problem-log.md). It is the project's technical mem
   (e.g. "fix rate limit, update problem log").
 
 ## User level
-Rather beginner/intermediate coding level. Favor clear explanations at each
-step, avoid unnecessary abstractions, and propose simple solutions before
-"elegant" but complex ones. No overengineering.
+ Favor clear explanations at each step, avoid unnecessary abstractions, and propose simple and elegant solutions before complex ones. No overengineering.
