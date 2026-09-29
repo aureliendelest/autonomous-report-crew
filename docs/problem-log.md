@@ -85,25 +85,20 @@ Commit the log update together with the fix (e.g. "fix rate limit, update proble
   Python function registered in `tool_executors`.
 
 ### A7. A single exhausted Groq model forced an early switch to OpenRouter
-- **Symptom**: as soon as the one Groq model in use hit its daily quota, the
-  whole pipeline fell back to OpenRouter for the rest of the day, even though
-  Groq's free tier actually offers several separate models, each with its own
-  separate daily quota.
+- **Symptom**: as soon as the one Groq model in use hit its quota, the whole
+  pipeline fell back to OpenRouter, even though Groq's free tier actually
+  offers several separate models, each with its own separate quota.
 - **Cause**: `GROQ_MODEL` was a single constant; there was no way to try a
   second Groq model before giving up on Groq entirely.
 - **Solution**: `GROQ_MODELS` is now an ordered list (best model first). A
   `RateLimitError` on one model moves to the next one in the list instead of
   switching provider immediately; OpenRouter is only used once every Groq
-  model in the list is exhausted. Models already seen as exhausted during the
-  current run are remembered in `_exhausted_models` so later turns don't
-  retry (and re-wait on) a model that is known to be dead for the day.
-- **Where**: `src/llm_client.py` (`GROQ_MODELS`, `_exhausted_models`,
+  model in the list is exhausted.
+- **Where**: `src/llm_client.py` (`GROQ_MODELS`, `_exhausted_until`,
   `_create_completion`).
-- **Rule**: `_exhausted_models` is process-local (reset on every run) — this
-  is intentional, since a daily quota can't be checked cheaply ahead of time.
-  Don't try to persist it across runs. Keep `gpt-oss-safeguard-*` variants out
-  of `GROQ_MODELS`: they are moderation-only models, not meant for writing
-  reports.
+- **Rule**: Keep `gpt-oss-safeguard-*` variants out of `GROQ_MODELS`: they are
+  moderation-only models, not meant for writing reports. See A9 for how long a
+  model is skipped before being retried.
 
 ### A8. Runaway tool-call loop
 - **Symptom**: a single report triggered around 30 web searches before the
@@ -120,6 +115,26 @@ Commit the log update together with the fix (e.g. "fix rate limit, update proble
 - **Rule**: never remove `tools` from a request once the conversation history
   contains a tool call — use `tool_choice="none"` to stop further tool use
   instead of omitting `tools`.
+
+### A9. Groq quotas are per-minute/per-hour, not daily
+- **Symptom**: after A7 marked an exhausted model as unusable for the rest of
+  the process (a `set`), the same model kept getting skipped for the whole
+  run even a few minutes later, even though it had clearly become available
+  again (confirmed with a real request — same model, valid JSON response).
+- **Cause**: the original fix assumed Groq's free tier quota was daily. It
+  isn't: every Groq response carries `x-ratelimit-limit-requests` /
+  `-remaining-requests` / `-reset-requests` (recharges over a ~1h rolling
+  window) and the same three for `-tokens` (recharges in seconds to a few
+  minutes) — there is no daily limit exposed at all. Banning a model for the
+  rest of the process was needlessly pessimistic.
+- **Solution**: `_exhausted_until` is now a `dict[model, timestamp]` instead
+  of a `set`. On a `RateLimitError`, the exact `retry-after` header value from
+  Groq is used to compute when that model becomes eligible again; a model is
+  only skipped while `time.time()` is before that timestamp.
+- **Where**: `src/llm_client.py` (`_exhausted_until`, `_create_completion`).
+- **Rule**: never assume a provider's rate limit is daily without checking
+  the actual rate-limit headers on a real response. Don't go back to a plain
+  `set` for this — the retry timing matters as much as the fact of exhaustion.
 
 ---
 
@@ -166,15 +181,15 @@ Commit the log update together with the fix (e.g. "fix rate limit, update proble
 ## C. Orchestration
 
 ### C1. Risk of an infinite Critic ↔ Researcher loop
-- **Symptom**: if the `STATUS: OK` marker is never detected, the Researcher
-  gets relaunched endlessly and drains the Tavily quota.
+- **Symptom**: if the Critic's verdict is never detected as "done", the
+  Researcher gets relaunched endlessly and drains the Tavily quota.
 - **Cause**: the model doesn't always follow the requested format.
-- **Solution**: `MAX_RESEARCH_LOOPS = 2`. The marker must be on the very first
-  line of the Critic's response (`startswith`).
-- **Where**: `src/orchestrator.py`, `prompts/*/critique.md`.
-- **Rule**: any loop between agents must have a cap. Never change the
-  `STATUS: OK` / `STATUS: MORE_RESEARCH_NEEDED` format in a prompt without
-  updating the code that detects it.
+- **Solution**: `MAX_RESEARCH_LOOPS = 2` caps the number of Critic↔Researcher
+  round trips regardless of what the Critic answers. See C5 for how the
+  Critic's answer itself is now parsed (JSON, not a `STATUS: OK` text marker).
+- **Where**: `src/orchestrator.py` (`_run_critique_and_redact`).
+- **Rule**: any loop between agents must have a hard cap, independent of
+  whether the model's output parses correctly.
 
 ### C2. The Critic can't judge freshness
 - **Symptom**: outdated information was being validated.
@@ -189,8 +204,8 @@ Commit the log update together with the fix (e.g. "fix rate limit, update proble
 - **Solution**: every step (Researcher turn N, Critic turn N) is saved to an
   `.audit.md` file next to the report.
 - **Where**: `src/orchestrator.py` (`_format_audit_log`).
-- **Rule**: any new pipeline step must be added to `steps` to appear in the
-  audit log.
+- **Rule**: any new pipeline step must be added to `trace_steps` (see C6) to
+  appear in the audit log.
 
 ### C4. The audit log couldn't answer "where did the tokens and time go?"
 - **Symptom**: `.audit.md` showed the content of each step, but not which
@@ -213,6 +228,58 @@ Commit the log update together with the fix (e.g. "fix rate limit, update proble
   source of truth computed independently — otherwise the two will drift.
   Any new metric worth tracking goes into the event dict passed to `on_call`,
   not directly into `_format_audit_log`.
+
+### C5. Fragile `STATUS: OK` text parsing
+- **Symptom**: the Critic's verdict was detected with
+  `critique.strip().startswith("STATUT: OK")` — one unexpected character
+  before that marker (extra whitespace, a stray word) silently breaks
+  detection and the pipeline treats a valid "OK" as "needs more research".
+- **Cause**: free-form text has no guaranteed structure; nothing validated
+  that the model actually followed the expected format.
+- **Solution**: the Critic now answers with a JSON object
+  (`{"status": "OK"|"KO", "gaps": [...]}`), validated with a Pydantic model
+  (`CritiqueResult`, `status: Literal["OK", "KO"]`). Markdown code fences
+  (```json ... ```) around the JSON are stripped before validation, since
+  some models add them despite the prompt asking not to. If validation still
+  fails (malformed JSON, missing/invalid `status`), the pipeline falls back
+  to `CritiqueResult(status="KO", gaps=["Réponse du Critique invalide ou
+  non-JSON"])` instead of crashing — a parse failure is treated exactly like
+  a normal "KO" verdict, so it goes through the same retry loop (capped by
+  `MAX_RESEARCH_LOOPS`, see C1). No dedicated LLM retry was added for a parse
+  failure on purpose: it would duplicate the Critic↔Researcher loop that
+  already exists, and cost an extra call for what is usually just a
+  formatting slip.
+- **Where**: `src/models.py` (`CritiqueResult`), `src/orchestrator.py`
+  (`_parse_critique`, `_strip_markdown_fence`), `prompts/*/critique.md`
+  ("Consignes de format" section).
+- **Rule**: never go back to parsing the Critic's free-form text. Any new
+  field on the Critic's verdict goes on `CritiqueResult` and the prompt's
+  JSON example, not as new free-form text. Watch `critique_parse_error` in
+  the trace over time — if it starts appearing often, the prompt needs
+  hardening, not a retry mechanism bolted onto `_parse_critique`.
+
+### C6. `steps` and `trace_steps` duplicated the same information
+- **Symptom**: `run_pipeline`/`resume_from_trace` carried two parallel lists
+  built and concatenated in lockstep at every call site — `steps` (tuples of
+  title/text, for the audit log) and `trace_steps` (dicts, for `trace.json`).
+  Any new step had to be appended to both, in the same order, or the audit
+  log and the trace would silently drift apart. This had already caused one
+  bug: the Writer's step summary was missing its `text`, so the audit log
+  rendered an empty body for that section.
+- **Cause**: `trace_steps` grew a `text` field over time (added after
+  `steps` already existed) but `steps` was never removed, so the same
+  information kept being tracked twice.
+- **Solution**: `steps` was removed. `trace_steps` (each entry already has
+  `agent`, `turn`, `text`) is now the only source of truth; `_format_audit_log`
+  takes `trace_steps` directly and reads `agent`/`turn`/`text` from it instead
+  of receiving a separate `steps` list built by the caller.
+- **Where**: `src/orchestrator.py` (`_format_audit_log`,
+  `_run_critique_and_redact`, `_write_run_outputs`, `run_pipeline`,
+  `resume_from_trace`).
+- **Rule**: a pipeline step's data (text, tokens, provider, etc.) lives in
+  exactly one structure (`trace_steps`). Never introduce a second list that
+  mirrors the same steps for a different rendering — add the missing field to
+  the existing trace entry instead.
 
 ---
 
