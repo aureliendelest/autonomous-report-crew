@@ -10,10 +10,14 @@ from openai import OpenAI
 load_dotenv()
 
 # Modèles Groq essayés dans l'ordre (le plus gros/meilleur en premier), chacun
-# ayant son propre quota journalier séparé sur le plan gratuit. Quand un modèle
-# est à quota, on passe au suivant plutôt que d'attendre — voir _create_completion.
-# On exclut volontairement gpt-oss-safeguard-20b (variante durcie pour la
-# modération de contenu, pas conçue pour rédiger des rapports).
+# ayant son propre quota séparé sur le plan gratuit. Groq expose deux quotas
+# distincts par modèle (visibles dans les headers x-ratelimit-* de chaque
+# réponse) : un plafond de requêtes qui se recharge sur ~1h glissante, et un
+# plafond de tokens qui se recharge en quelques secondes à quelques minutes —
+# aucun des deux n'est "journalier". Quand un modèle est à quota, on passe au
+# suivant plutôt que d'attendre — voir _create_completion. On exclut
+# volontairement gpt-oss-safeguard-20b (variante durcie pour la modération de
+# contenu, pas conçue pour rédiger des rapports).
 GROQ_MODELS = [
     "openai/gpt-oss-120b",
     "openai/gpt-oss-20b",
@@ -29,13 +33,15 @@ MAX_RATE_LIMIT_RETRIES = 3
 MAX_RETRY_WAIT_SECONDS = 20
 MAX_OPENROUTER_RETRIES = 2
 
-# Modèles Groq déjà vus comme épuisés pour la journée durant ce process. Un
-# quota journalier ne se recharge pas en cours de run : sans ce cache, chaque
-# tour de conversation retentait depuis le début de GROQ_MODELS et payait à
-# nouveau les retries (jusqu'à MAX_RATE_LIMIT_RETRIES x MAX_RETRY_WAIT_SECONDS)
-# sur un modèle qu'on sait déjà mort, ce qui ralentissait chaque tour de
-# plusieurs dizaines de secondes pour rien.
-_exhausted_models: set[str] = set()
+# Modèles Groq vus comme à quota durant ce process, avec l'instant (time.time())
+# où ils redeviennent utilisables (lu dans le header "retry-after" de Groq).
+# Sans ce cache, chaque tour de conversation retentait depuis le début de
+# GROQ_MODELS et payait à nouveau les retries (jusqu'à MAX_RATE_LIMIT_RETRIES x
+# MAX_RETRY_WAIT_SECONDS) sur un modèle qu'on sait déjà à quota. Le quota se
+# rechargeant en minutes/heure (pas par jour, voir commentaire GROQ_MODELS
+# ci-dessus), on retente le modèle dès que ce délai est passé plutôt que de le
+# bannir pour le reste du process.
+_exhausted_until: dict[str, float] = {}
 
 
 def get_groq_client() -> Groq:
@@ -61,9 +67,10 @@ def _create_with_retry(client, **kwargs):
             wait_seconds = float(e.response.headers.get("retry-after", 2))
             if attempt == MAX_RATE_LIMIT_RETRIES or wait_seconds > MAX_RETRY_WAIT_SECONDS:
                 # Au-delà de ce seuil, ce n'est plus un simple pic de trafic à
-                # patienter mais probablement un quota bien plus large épuisé
-                # (ex: limite journalière) : on laisse l'appelant basculer sur
-                # OpenRouter plutôt que de bloquer le pipeline en silence.
+                # patienter mais un quota (requêtes ou tokens, voir les headers
+                # x-ratelimit-* de Groq) qui prendra plus longtemps à se
+                # recharger : on laisse l'appelant basculer sur le modèle
+                # suivant plutôt que de bloquer le pipeline en silence.
                 raise
             print(f"[llm_client] limite de débit Groq atteinte, nouvelle tentative dans {wait_seconds:.1f}s")
             time.sleep(wait_seconds)
@@ -72,16 +79,16 @@ def _create_with_retry(client, **kwargs):
 def _create_completion(
     messages: list[dict], tools: list[dict] | None, max_tokens: int, force_no_tool: bool = False
 ):
-    """Essaie chaque modèle Groq de GROQ_MODELS non encore marqué épuisé (voir
-    `_exhausted_models`), puis bascule sur OpenRouter si tous le sont.
+    """Essaie chaque modèle Groq de GROQ_MODELS pas actuellement à quota (voir
+    `_exhausted_until`), puis bascule sur OpenRouter si tous le sont.
 
-    Chaque tour de la conversation repasse par cette fonction, mais un modèle
-    déjà vu comme épuisé n'est pas retenté (son quota journalier ne se
-    recharge pas en cours de run). C'est sans risque de mélanger les
-    fournisseurs/modèles d'un tour à l'autre car les messages renvoyés dans la
-    conversation sont assainis par `_assistant_message_for_replay` (voir plus
-    bas) : aucun champ propre à un fournisseur (ex: "reasoning_details"
-    d'OpenRouter/Nemotron) n'y subsiste.
+    Chaque tour de la conversation repasse par cette fonction. Un modèle vu
+    comme à quota n'est retenté qu'une fois le délai indiqué par Groq
+    (`retry-after`) écoulé — voir `_exhausted_until`. C'est sans risque de
+    mélanger les fournisseurs/modèles d'un tour à l'autre car les messages
+    renvoyés dans la conversation sont assainis par
+    `_assistant_message_for_replay` (voir plus bas) : aucun champ propre à un
+    fournisseur (ex: "reasoning_details" d'OpenRouter/Nemotron) n'y subsiste.
 
     `force_no_tool` garde `tools` dans la requête (nécessaire : Groq refuse
     avec une 400 si l'historique contient des tool calls mais que `tools`
@@ -94,16 +101,21 @@ def _create_completion(
         if force_no_tool:
             groq_kwargs["tool_choice"] = "none"
 
-    remaining_models = [m for m in GROQ_MODELS if m not in _exhausted_models]
+    now = time.time()
+    remaining_models = [m for m in GROQ_MODELS if _exhausted_until.get(m, 0) <= now]
     if remaining_models:
         groq_client = get_groq_client()
         for i, model in enumerate(remaining_models):
             try:
                 return _create_with_retry(groq_client, model=model, messages=messages, **groq_kwargs), model
-            except RateLimitError:
-                _exhausted_models.add(model)
+            except RateLimitError as e:
+                wait_seconds = float(e.response.headers.get("retry-after", 60))
+                _exhausted_until[model] = time.time() + wait_seconds
                 is_last_model = i == len(remaining_models) - 1
-                print(f"[llm_client] quota épuisé pour {model}" + ("" if is_last_model else ", essai du modèle suivant"))
+                print(
+                    f"[llm_client] quota épuisé pour {model} (retente dans {wait_seconds:.0f}s)"
+                    + ("" if is_last_model else ", essai du modèle suivant")
+                )
                 if not is_last_model:
                     continue
 
