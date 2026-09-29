@@ -8,9 +8,8 @@ from typing import Callable
 from pydantic import ValidationError
 
 from . import agents
-from .models import CritiqueResult
+from .models import CritiqueResult, RunConfig
 
-MAX_RESEARCH_LOOPS = 2
 OUTPUTS_DIR = Path(__file__).resolve().parent.parent / "outputs"
 
 
@@ -100,14 +99,26 @@ def _run_critique_and_redact(
     research: str,
     use_cache: bool,
     notify: Callable[[str], None],
+    config: RunConfig,
 ) -> tuple[str, list[dict]]:
     """Boucle Critique↔Chercheur puis rédaction du rapport final, à partir
     d'une recherche déjà disponible (fraîche ou rechargée depuis une trace)."""
     trace_steps: list[dict] = []
 
+    if config.skip_critic:
+        notify("[Rédacteur] rédaction du rapport final (Critique désactivé)")
+        on_call, summarize = _new_step_recorder()
+        report = agents.run_redacteur(
+            topic, domain, research,
+            "Le Critique a été désactivé pour ce run (ablation).",
+            incomplete=False, on_call=on_call,
+        )
+        trace_steps.append(summarize("redacteur", 1, text=report))
+        return report, trace_steps
+
     critique_result = CritiqueResult(status="KO", gaps=[])
     validated = False
-    for i in range(MAX_RESEARCH_LOOPS + 1):
+    for i in range(config.max_research_loops + 1):
         notify(f"[Critique] relecture (tour {i + 1})")
         on_call, summarize = _new_step_recorder()
         critique = agents.run_critique(topic, domain, research, on_call=on_call)
@@ -120,7 +131,7 @@ def _run_critique_and_redact(
         if critique_result.status == "OK":
             validated = True
             break
-        if i == MAX_RESEARCH_LOOPS:
+        if i == config.max_research_loops:
             break
 
         notify("[Critique] demande des recherches complémentaires, on relance le Chercheur")
@@ -154,10 +165,12 @@ def _write_run_outputs(
     trace_steps: list[dict],
     notify: Callable[[str], None],
     slug: str | None = None,
+    label: str = "baseline",
 ) -> Path:
     slug = slug or _slugify(topic)
     timestamp = f"{datetime.now():%Y%m%d-%H%M}"
-    run_dir = OUTPUTS_DIR / domain / f"{slug}-{timestamp}"
+    dir_name = f"{slug}-{timestamp}" if label == "baseline" else f"{slug}-{label}-{timestamp}"
+    run_dir = OUTPUTS_DIR / domain / dir_name
     run_dir.mkdir(parents=True, exist_ok=True)
 
     output_path = run_dir / "report.md"
@@ -187,7 +200,9 @@ def run_pipeline(
     domain: str = "football",
     on_step: Callable[[str], None] | None = None,
     use_cache: bool = True,
+    config: RunConfig | None = None,
 ) -> Path:
+    config = config or RunConfig()
     notify = on_step or print
 
     notify(f"[Chercheur] recherche sur : {topic}")
@@ -195,10 +210,10 @@ def run_pipeline(
     research = agents.run_chercheur(topic, domain, use_cache=use_cache, on_call=on_call)
     trace_steps: list[dict] = [summarize("chercheur", 1, text=research)]
 
-    report, more_trace_steps = _run_critique_and_redact(topic, domain, research, use_cache, notify)
+    report, more_trace_steps = _run_critique_and_redact(topic, domain, research, use_cache, notify, config)
     trace_steps += more_trace_steps
 
-    return _write_run_outputs(topic, domain, report, trace_steps, notify)
+    return _write_run_outputs(topic, domain, report, trace_steps, notify, label=config.label)
 
 
 def resume_from_trace(
@@ -206,6 +221,7 @@ def resume_from_trace(
     start_at: str = "critic",
     on_step: Callable[[str], None] | None = None,
     use_cache: bool = True,
+    config: RunConfig | None = None,
 ) -> Path:
     """Rejoue le pipeline à partir d'une trace existante, sans repasser par
     le Chercheur : utile pour itérer sur le prompt du Critique sans repayer
@@ -213,6 +229,7 @@ def resume_from_trace(
     if start_at != "critic":
         raise ValueError(f"start_at non supporté : {start_at!r} (seul 'critic' est disponible)")
 
+    config = config or RunConfig()
     notify = on_step or print
     trace_data = json.loads(trace_path.read_text(encoding="utf-8"))
     topic = trace_data["topic"]
@@ -229,6 +246,6 @@ def resume_from_trace(
         )
 
     notify(f"[Replay] recherche rechargée depuis {trace_path}")
-    report, trace_steps = _run_critique_and_redact(topic, domain, research, use_cache, notify)
+    report, trace_steps = _run_critique_and_redact(topic, domain, research, use_cache, notify, config)
 
-    return _write_run_outputs(topic, domain, report, trace_steps, notify)
+    return _write_run_outputs(topic, domain, report, trace_steps, notify, label=config.label)

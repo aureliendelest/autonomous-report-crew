@@ -116,5 +116,9 @@ def web_search(
         "cached": cached,
         "result_count": len(response["results"]),
         "urls": [result["url"] for result in response["results"]],
+        # Utilisé par l'évaluation (session 5) pour détecter les sources
+        # périmées sans avoir à retrouver après coup quelle entrée du cache
+        # correspond à quelle URL.
+        "published_dates": {result["url"]: result.get("published_date") for result in response["results"]},
     }
     return _format_results(response), meta

@@ -1,0 +1,41 @@
+# Jeu de test pour la session 5 (mini-évaluation).
+# tag: décrit ce qui rend le cas intéressant ou difficile, pas une catégorie
+# formelle — sert juste à savoir pourquoi ce sujet a été choisi.
+
+- topic: "FC Nantes"
+  domain: football
+  tag: "homonyme (Le Mans FC apparaît dans les résultats de recherche)"
+- topic: "Le Mans FC"
+  domain: football
+  tag: "club moins connu, risque de contenu pauvre"
+- topic: "Olympique de Marseille"
+  domain: football
+  tag: "club à forte actualité, beaucoup de bruit médiatique à filtrer"
+- topic: "AS Saint-Étienne"
+  domain: football
+  tag: "club en crise sportive (relégation/remontées récentes, résultats difficiles)"
+- topic: "Stade Rennais"
+  domain: football
+  tag: "cas standard, actualité modérée"
+- topic: "Racing Club de Lens"
+  domain: football
+  tag: "cas standard, sert de témoin/baseline stable"
+
+- topic: "Adoption de l'IA générative dans la banque de détail"
+  domain: ia-entreprise
+  tag: "secteur bien couvert, sert de témoin/baseline"
+- topic: "Adoption de l'IA générative dans la viticulture"
+  domain: ia-entreprise
+  tag: "secteur très niche, risque de contenu pauvre ou hors-sujet"
+- topic: "Forvis Mazars et l'IA générative"
+  domain: ia-entreprise
+  tag: "cabinet de conseil peu connu du grand public, déjà testé manuellement"
+- topic: "Adoption de l'IA générative dans les cabinets d'avocats français"
+  domain: ia-entreprise
+  tag: "secteur niche, risque de confusion avec l'IA juridique US"
+- topic: "Adoption de l'IA générative dans l'industrie du vin"
+  domain: ia-entreprise
+  tag: "secteur très niche, proche de la viticulture pour comparer la variance"
+- topic: "McKinsey et l'IA générative"
+  domain: ia-entreprise
+  tag: "cabinet très connu, sert de contraste avec le cabinet niche ci-dessus"
