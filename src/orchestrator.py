@@ -1,3 +1,5 @@
+import re
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
@@ -6,6 +8,13 @@ from . import agents
 
 MAX_RESEARCH_LOOPS = 2
 OUTPUTS_DIR = Path(__file__).resolve().parent.parent / "outputs"
+
+
+def _slugify(topic: str) -> str:
+    normalized = unicodedata.normalize("NFKD", topic)
+    ascii_only = normalized.encode("ascii", errors="ignore").decode("ascii")
+    slug = re.sub(r"[^a-z0-9]+", "-", ascii_only.lower())
+    return slug.strip("-")
 
 
 def _format_audit_log(topic: str, domain: str, steps: list[tuple[str, str]]) -> str:
@@ -50,7 +59,7 @@ def run_pipeline(
     report = agents.run_redacteur(topic, domain, research, critique, incomplete=not validated)
 
     OUTPUTS_DIR.mkdir(exist_ok=True)
-    slug = topic.lower().replace(" ", "-")
+    slug = _slugify(topic)
     timestamp = f"{datetime.now():%Y%m%d-%H%M}"
 
     output_path = OUTPUTS_DIR / f"{domain}-{slug}-{timestamp}.md"

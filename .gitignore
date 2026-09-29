@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Claude Code local settings
+.claude/
+
+# Generated reports and audit logs (run artifacts, not source)
+outputs/*.md
