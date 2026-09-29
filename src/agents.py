@@ -1,5 +1,6 @@
 import re
 from datetime import date
+from typing import Callable
 
 from . import llm_client, prompts
 from .web_search import TAVILY_TOOL_SCHEMA, web_search
@@ -10,18 +11,6 @@ URL_RE = re.compile(r"https?://[^\s\)\]\>\"'】]+")
 def _extract_urls(text: str) -> set[str]:
     return {url.rstrip(".,;:)]}>»") for url in URL_RE.findall(text)}
 
-# Fenêtre de recherche par domaine : le football a besoin des tout derniers
-# résultats (sinon on retombe sur d'anciens matchs), tandis que l'ia-entreprise
-# a besoin de remonter plus loin pour trouver rapports d'étude, communiqués de
-# presse et pages officielles, qui ne sont pas toujours publiés dans la semaine
-# ni classés "actualité" par Tavily.
-SEARCH_CONFIG_BY_DOMAIN = {
-    "football": {"topic": "news", "time_range": "week"},
-    "ia-entreprise": {"topic": "general", "time_range": "year"},
-}
-DEFAULT_SEARCH_CONFIG = {"topic": "news", "time_range": "week"}
-
-
 def _today() -> str:
     return date.today().strftime("%d %B %Y")
 
@@ -31,6 +20,8 @@ def run_chercheur(
     domain: str,
     feedback: str | None = None,
     previous_research: str | None = None,
+    use_cache: bool = True,
+    on_call: Callable[[dict], None] | None = None,
 ) -> str:
     system = prompts.load_prompt(domain, "chercheur")
     user_message = f"Nous sommes le {_today()}.\n\nSujet : {topic}"
@@ -46,12 +37,14 @@ def run_chercheur(
             f"\n\nLe critique a demandé des recherches complémentaires :\n{feedback}"
         )
 
-    search_config = SEARCH_CONFIG_BY_DOMAIN.get(domain, DEFAULT_SEARCH_CONFIG)
+    search_config = prompts.load_search_config(domain)
     seen_urls: set[str] = set()
 
     def scoped_web_search(query: str) -> str:
-        result = web_search(query, **search_config)
-        seen_urls.update(_extract_urls(result))
+        result, meta = web_search(query, use_cache=use_cache, **search_config)
+        seen_urls.update(meta["urls"])
+        if on_call:
+            on_call({"tool_call": {"query": query, **meta}})
         return result
 
     research = llm_client.call_agent(
@@ -59,6 +52,7 @@ def run_chercheur(
         user_message,
         tools=[TAVILY_TOOL_SCHEMA],
         tool_executors={"web_search": scoped_web_search},
+        on_call=on_call,
     )
 
     # Garde-fou anti-hallucination : un LLM peut citer une URL plausible mais
@@ -80,17 +74,24 @@ def run_chercheur(
     return research
 
 
-def run_critique(topic: str, domain: str, research: str) -> str:
+def run_critique(
+    topic: str, domain: str, research: str, on_call: Callable[[dict], None] | None = None
+) -> str:
     system = prompts.load_prompt(domain, "critique")
     user_message = (
         f"Nous sommes le {_today()}.\n\n"
         f"Sujet : {topic}\n\nRecherches du Chercheur :\n{research}"
     )
-    return llm_client.call_agent(system, user_message)
+    return llm_client.call_agent(system, user_message, on_call=on_call)
 
 
 def run_redacteur(
-    topic: str, domain: str, research: str, critique: str, incomplete: bool = False
+    topic: str,
+    domain: str,
+    research: str,
+    critique: str,
+    incomplete: bool = False,
+    on_call: Callable[[dict], None] | None = None,
 ) -> str:
     system = prompts.load_prompt(domain, "redacteur")
     user_message = (
@@ -109,4 +110,4 @@ def run_redacteur(
         )
     # Le rapport final (tableaux + prose) dépasse souvent le budget par défaut,
     # surtout avec le modèle de secours OpenRouter, plus verbeux.
-    return llm_client.call_agent(system, user_message, max_tokens=1500)
+    return llm_client.call_agent(system, user_message, max_tokens=1500, on_call=on_call)
