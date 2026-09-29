@@ -1,79 +1,95 @@
-# Projet : Autonomous Report Crew
+# Project: Autonomous Report Crew
 
-## Contexte
-Projet portfolio personnel : un système multi-agents (chercheur → critique → rédacteur)
-qui automatise la production de rapports de veille sur un sujet donné.
+## Context
+Personal portfolio project: a multi-agent system (researcher → critic → writer)
+that automates the production of monitoring/intelligence reports on a given topic.
 
-Objectif : démontrer une compétence "agentique" (orchestration LLM, tool-calling,
-boucle raisonnement/action) en complément d'un premier projet Kaggle (ML classique
-sur données géospatiales).
+Goal: demonstrate "agentic" skills (LLM orchestration, tool-calling,
+reasoning/action loop) alongside a first Kaggle project (classic ML on
+geospatial data).
 
-## Architecture générale
-Le système repose sur 3 agents qui collaborent en séquence :
+## General architecture
+The system relies on 3 agents collaborating in sequence:
 
-1. **Agent Chercheur** : reçoit un sujet, effectue des recherches web ciblées,
-   ramène des extraits de sources pertinentes.
-2. **Agent Critique** : relit les résultats du chercheur, vérifie la cohérence
-   et la fiabilité des sources, signale les contradictions ou informations
-   manquantes, peut redemander une recherche complémentaire.
-3. **Agent Rédacteur** : synthétise le tout dans un rapport final structuré
-   (résumé, points clés, sources citées).
+1. **Researcher Agent**: receives a topic, performs targeted web searches,
+   gathers excerpts from relevant sources.
+2. **Critic Agent**: reviews the researcher's findings, checks the
+   consistency and reliability of sources, flags contradictions or missing
+   information, and can request additional research.
+3. **Writer Agent**: synthesizes everything into a final structured report
+   (summary, key points, cited sources).
 
-Le code de l'architecture (appels API, boucle des agents) est générique.
-Ce qui différencie un "domaine" d'un autre, ce sont uniquement les prompts
-système de chaque agent (voir `/prompts`).
+The architecture code (API calls, agent loop) is generic. What differentiates
+one "domain" from another is only the system prompts for each agent
+(see `/prompts`).
 
-## Domaines couverts
+## Domains covered
 
-### Domaine de test : football
-Fiche hebdomadaire sur un club de football (résultats, actualité, prochaine
-échéance). Utilisé pour valider que le pipeline fonctionne sur un sujet où
-la qualité du résultat est facile à juger soi-même.
+### Test domain: football
+Weekly briefing on a football club (results, news, next fixture). Used to
+validate that the pipeline works on a topic where result quality is easy to
+judge on one's own.
 
-### Domaine sérieux : adoption de l'IA en entreprise
-Synthèse sectorielle sur l'adoption de l'IA générative en entreprise
-(cas d'usage, ROI observé, freins). Domaine présentable en entretien,
-avec du contenu de fond réutilisable.
+### Serious domain: AI adoption in business
+Sector-wide synthesis on generative AI adoption in business (use cases,
+observed ROI, barriers). A presentable domain for interviews, with reusable
+substantive content.
 
-## Roadmap (sessions de développement)
+## Roadmap (development sessions)
 
-- **Session 1** : agent multi-étapes en ligne de commande, un seul domaine
-  (football), sans interface.
-- **Session 2** : ajout d'un front simple (Streamlit) avec sélection de
-  domaine parmi une liste pré-configurée (football, IA en entreprise).
-- **Session 3** (optionnelle) : création dynamique de nouveaux domaines
-  depuis l'interface (génération automatique des prompts système).
+- **Session 1**: multi-step agent on the command line, single domain
+  (football), no interface.
+- **Session 2**: adding a simple front-end (Streamlit) with domain selection
+  from a pre-configured list (football, AI in business).
+- **Session 3** (optional): dynamic creation of new domains from the
+  interface (automatic generation of system prompts).
 
-## Stack technique
+## Tech stack
 - Python 3.x
-- API Anthropic (`anthropic` SDK, modèle Claude)
-- Recherche web : [à préciser selon l'implémentation retenue en session 1]
-- Interface (session 2+) : Streamlit
-- Gestion des secrets : fichier `.env` (jamais commité), voir `.env.example`
+- Anthropic API (`anthropic` SDK, Claude model)
+- Web search: [to be specified based on the implementation chosen in session 1]
+- Interface (session 2+): Streamlit
+- Secrets management: `.env` file (never committed), see `.env.example`
 
-## Structure du projet
-/src → code source (agents, orchestration, appels API)
-/prompts → prompts système par domaine et par agent
-/docs → rapport de projet, notes de conception
-/outputs → rapports générés par les agents (exemples de sortie)
-.env.example → structure attendue du fichier .env (sans les vraies clés)
+## Project structure
+/src → source code (agents, orchestration, API calls)
+/prompts → system prompts per domain and per agent
+/docs → project report, design notes, problem log
+/outputs → reports generated by the agents (example outputs)
+.env.example → expected structure of the `.env` file (without real keys)
 requirements.txt
 README.md
 
 
-## Conventions de travail avec Claude Code
+## Working conventions with Claude Code
 
-- Toujours lire ce fichier en début de session pour retrouver le contexte.
-- Commit après chaque fonctionnalité qui fonctionne (pas de gros commits fourre-tout).
-- Messages de commit clairs et en anglais, format court
-  (ex: "add the critical agent", "research loop corrected").
-- Toujours vérifier `git status` avant de committer pour éviter d'inclure
-  des fichiers indésirables (`.env`, fichiers temporaires).
-- Push sur `main` uniquement quand une fonctionnalité est testée et fonctionnelle.
-- Ne jamais committer de clé API ou de secret — toujours passer par `.env`.
+- Always read this file at the start of a session to recover context.
+- Commit after each working feature (no large catch-all commits).
+- Clear, short commit messages in English
+  (e.g. "add the critical agent", "research loop corrected").
+- Always check `git status` before committing to avoid including unwanted
+  files (`.env`, temporary files).
+- Push to `main` only when a feature has been tested and works.
+- Never commit an API key or secret — always go through `.env`.
+- All project documentation (this file, `/docs`, prompts comments, etc.)
+  must be written in English.
 
-## Niveau de l'utilisateur
-Niveau de code plutôt débutant/intermédiaire. Privilégier des explications
-claires à chaque étape, éviter les abstractions inutiles, et proposer des
-solutions simples avant des solutions "élégantes" mais complexes.
-Pas d'overengineering.
+## Problem log
+
+The project keeps a running log of problems encountered and their solutions
+in [docs/problem-log.md](docs/problem-log.md). It is the project's technical memory.
+
+- **Before modifying code or prompts**, read the relevant section of that
+  file to avoid reintroducing an already-solved problem.
+- **After solving a new problem**, add an entry at the bottom of the
+  relevant section yourself, without waiting for the user to ask, following
+  the format and conventions described at the top of that file.
+- Write entries in English, with simple beginner/intermediate-level
+  explanations.
+- Commit the log update together with the corresponding fix
+  (e.g. "fix rate limit, update problem log").
+
+## User level
+Rather beginner/intermediate coding level. Favor clear explanations at each
+step, avoid unnecessary abstractions, and propose simple solutions before
+"elegant" but complex ones. No overengineering.
