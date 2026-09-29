@@ -222,7 +222,8 @@ __marimo__/
 
 # Generated reports and audit logs (run artifacts, not source)
 outputs/*.md
-outputs/*.trace.json
+outputs/*/*/*.md
+outputs/*/*/*.json
 
 # Disk cache of Tavily search responses (session 4)
 .cache/

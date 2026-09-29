@@ -28,7 +28,7 @@ with tab_new:
                 st.download_button(
                     "Télécharger le rapport (.md)",
                     data=report_text,
-                    file_name=report_path.name,
+                    file_name=f"{domain}-{report_path.parent.name}.md",
                     mime="text/markdown",
                 )
             except RuntimeError as e:
@@ -36,7 +36,7 @@ with tab_new:
 
 with tab_history:
     reports = sorted(
-        (p for p in OUTPUTS_DIR.glob("*.md") if not p.name.endswith(".audit.md")),
+        OUTPUTS_DIR.glob("*/*/report.md"),
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
@@ -44,31 +44,21 @@ with tab_history:
     if not reports:
         st.info("Aucun rapport généré pour l'instant.")
     else:
-        # Les noms de domaine peuvent contenir des tirets (ex: "ia-entreprise") :
-        # on retrouve le bon préfixe en le comparant aux domaines connus plutôt
-        # que de couper le nom de fichier au premier tiret.
-        known_domains = sorted(list_domains(), key=len, reverse=True)
-
-        def domain_for(path: Path) -> str:
-            for known in known_domains:
-                if path.name.startswith(f"{known}-"):
-                    return known
-            return "autre"
-
         by_domain: dict[str, list[Path]] = {}
         for path in reports:
-            by_domain.setdefault(domain_for(path), []).append(path)
+            by_domain.setdefault(path.parent.parent.name, []).append(path)
 
         for domain_name in sorted(by_domain):
             st.subheader(domain_name)
             for path in by_domain[domain_name]:
-                with st.expander(path.stem):
+                run_name = path.parent.name
+                with st.expander(run_name):
                     report_text = path.read_text(encoding="utf-8")
                     st.markdown(report_text)
                     st.download_button(
                         "Télécharger le rapport (.md)",
                         data=report_text,
-                        file_name=path.name,
+                        file_name=f"{domain_name}-{run_name}.md",
                         mime="text/markdown",
-                        key=f"download-{path.name}",
+                        key=f"download-{domain_name}-{run_name}",
                     )

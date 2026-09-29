@@ -104,14 +104,15 @@ def run_pipeline(
     steps.append(("Rédacteur", report))
     trace_steps.append(summarize("redacteur", 1))
 
-    OUTPUTS_DIR.mkdir(exist_ok=True)
     slug = _slugify(topic)
     timestamp = f"{datetime.now():%Y%m%d-%H%M}"
+    run_dir = OUTPUTS_DIR / domain / f"{slug}-{timestamp}"
+    run_dir.mkdir(parents=True, exist_ok=True)
 
-    output_path = OUTPUTS_DIR / f"{domain}-{slug}-{timestamp}.md"
+    output_path = run_dir / "report.md"
     output_path.write_text(report, encoding="utf-8")
 
-    trace_path = OUTPUTS_DIR / f"{domain}-{slug}-{timestamp}.trace.json"
+    trace_path = run_dir / "trace.json"
     trace_path.write_text(
         json.dumps(
             {"topic": topic, "domain": domain, "timestamp": timestamp, "steps": trace_steps},
@@ -121,7 +122,7 @@ def run_pipeline(
         encoding="utf-8",
     )
 
-    audit_path = OUTPUTS_DIR / f"{domain}-{slug}-{timestamp}.audit.md"
+    audit_path = run_dir / "audit.md"
     audit_path.write_text(_format_audit_log(topic, domain, steps, trace_steps), encoding="utf-8")
 
     notify(f"Rapport enregistré : {output_path}")
