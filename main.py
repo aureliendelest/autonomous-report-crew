@@ -1,10 +1,15 @@
 import argparse
+import logging
 from pathlib import Path
 
+from src.logging_config import setup_logging
 from src.orchestrator import resume_from_trace, run_pipeline
+
+logger = logging.getLogger("main")
 
 
 def main():
+    setup_logging()
     parser = argparse.ArgumentParser(description="Génère un rapport de veille automatisé.")
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--topic", help="Sujet du rapport, ex: 'Olympique de Marseille'")
@@ -40,7 +45,7 @@ def main():
         else:
             run_pipeline(args.topic, args.domain, use_cache=not args.no_cache)
     except (RuntimeError, ValueError) as e:
-        print(f"Erreur : {e}")
+        logger.error("Erreur : %s", e)
         raise SystemExit(1) from e
 
 

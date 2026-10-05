@@ -2,8 +2,11 @@ from pathlib import Path
 
 import streamlit as st
 
+from src.logging_config import setup_logging
 from src.orchestrator import OUTPUTS_DIR, run_pipeline
 from src.prompts import list_domains
+
+setup_logging()
 
 st.title("Autonomous Report Crew")
 

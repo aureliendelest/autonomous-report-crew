@@ -31,6 +31,20 @@ python main.py --topic "Olympique de Marseille"
 The generated report is saved under `/outputs`. `--domain` defaults to `football`
 (the only domain wired up so far); it selects which prompt set under `/prompts` to use.
 
+### Logging
+
+Diagnostic events (rate limits, model fallback, search timeouts...) are logged to stderr.
+Two optional environment variables (set them in your shell or in `.env`) tune them:
+
+| Variable | Values | Default |
+|---|---|---|
+| `LOG_LEVEL` | `DEBUG`, `INFO`, `WARNING`, `ERROR` | `INFO` |
+| `LOG_FORMAT` | `text` (readable), `json` (one JSON object per line) | `text` |
+
+```bash
+LOG_FORMAT=json python main.py --topic "Olympique de Marseille" 2> run.log.jsonl
+```
+
 ## Docker
 
 Requires Docker Desktop. The same image runs the Streamlit app and the CLI.

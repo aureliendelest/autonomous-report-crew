@@ -60,6 +60,11 @@ substantive content.
 - Dependencies and tool config: `pyproject.toml` (install with
   `pip install ".[dev]"`). Code quality: ruff (lint + format) enforced by
   pre-commit hooks; run `pre-commit install` once per clone.
+- Logging: stdlib `logging`, configured by `src/logging_config.py`
+  (`LOG_LEVEL`, `LOG_FORMAT=text|json`). Use `logger = logging.getLogger(__name__)`
+  and never `print()` for diagnostics (ruff enforces it). Pass structured
+  fields with `extra={...}` and never log secrets. The `notify`/`on_step`
+  callback of the orchestrator is user-facing progress, not logging.
 - Secrets management: `.env` file (never committed, never copied into the
   Docker image), see `.env.example`.
 

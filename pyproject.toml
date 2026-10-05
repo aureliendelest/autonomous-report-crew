@@ -37,4 +37,5 @@ target-version = "py312"
 # E/F: pycodestyle errors and pyflakes (unused imports, undefined names)
 # I: import sorting, UP: syntax modernised for Python 3.12, B: likely bugs
 # SIM: simplifications, C4: unnecessary dict()/list() calls
-select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
+# T20: no print() (use logging), LOG/G: correct use of the logging module
+select = ["E", "F", "I", "UP", "B", "SIM", "C4", "T20", "LOG", "G"]

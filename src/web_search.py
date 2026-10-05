@@ -1,11 +1,14 @@
 import hashlib
 import json
+import logging
 import os
 import time
 from pathlib import Path
 
 from tavily import TavilyClient
 from tavily.errors import TimeoutError as TavilyTimeoutError
+
+logger = logging.getLogger(__name__)
 
 TAVILY_TOOL_SCHEMA = {
     "type": "function",
@@ -79,7 +82,7 @@ def _fetch_from_tavily(query: str, topic: str, time_range: str, max_results: int
         except TavilyTimeoutError:
             if attempt == MAX_TIMEOUT_RETRIES:
                 raise
-            print("[web_search] timeout Tavily, nouvelle tentative")
+            logger.warning("timeout Tavily, nouvelle tentative", extra={"attempt": attempt + 1})
             time.sleep(2)
 
 

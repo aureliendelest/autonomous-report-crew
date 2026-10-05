@@ -22,6 +22,7 @@ Usage : python -m eval.run_eval
 """
 
 import json
+import logging
 import sys
 from collections import Counter, defaultdict
 from datetime import UTC, datetime
@@ -33,9 +34,12 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.agents import _extract_urls
+from src.logging_config import setup_logging
 from src.models import RunConfig
 from src.orchestrator import run_pipeline
 from src.prompts import load_search_config
+
+logger = logging.getLogger("eval.run_eval")
 
 EVAL_DIR = Path(__file__).resolve().parent
 TOPICS_PATH = EVAL_DIR / "topics.yaml"
@@ -252,6 +256,7 @@ def charger_resultats_existants() -> list[dict]:
 
 
 def main():
+    setup_logging()
     topics = charger_topics(TOPICS_PATH)
     # Reprise : on garde les runs déjà réussis et on retente seulement ceux
     # qui avaient échoué ou n'ont pas encore été faits. Les résultats sont
@@ -259,13 +264,23 @@ def main():
     resultats = [r for r in charger_resultats_existants() if "erreur" not in r]
     deja_faits = {(r["topic"], r["label"]) for r in resultats}
     if deja_faits:
-        print(f"[eval] reprise : {len(deja_faits)} runs déjà réussis, ils seront sautés")
+        logger.info(
+            "reprise : %d runs déjà réussis, ils seront sautés",
+            len(deja_faits),
+            extra={"runs_skipped": len(deja_faits)},
+        )
 
     for t in topics:
         for config in ABLATIONS:
             if (t["topic"], config.label) in deja_faits:
                 continue
-            print(f"[eval] {t['domain']} / {t['topic']} / {config.label}")
+            logger.info(
+                "%s / %s / %s",
+                t["domain"],
+                t["topic"],
+                config.label,
+                extra={"domain": t["domain"], "topic": t["topic"], "ablation": config.label},
+            )
             try:
                 report_path = run_pipeline(t["topic"], t["domain"], use_cache=True, config=config)
                 metriques = evaluer_un_run(report_path)
@@ -283,7 +298,7 @@ def main():
             )
             ecrire_resultats(resultats)
 
-    print(f"\nRésultats écrits dans {EVAL_DIR / 'results.json'} et {EVAL_DIR / 'results.md'}")
+    logger.info("Résultats écrits dans %s et %s", EVAL_DIR / "results.json", EVAL_DIR / "results.md")
 
 
 if __name__ == "__main__":
