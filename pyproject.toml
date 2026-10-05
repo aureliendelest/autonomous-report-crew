@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autonomous-report-crew"
+version = "0.1.0"
+description = "Multi-agent research system: researcher, critic and writer agents produce structured briefs on a topic."
+requires-python = ">=3.12"
+dependencies = [
+    "groq>=0.30.0",
+    "openai>=1.50.0",
+    "tavily-python>=0.5.0",
+    "python-dotenv>=1.0.0",
+    "streamlit>=1.38.0",
+    "pydantic>=2.7.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.16",
+    "pre-commit>=4.0",
+]
+
+# This is an application, not a library: there is no package to build. An empty
+# list stops setuptools from guessing among src/, eval/, prompts/... and failing;
+# `pip install .` then only installs the dependencies above.
+[tool.setuptools]
+packages = []
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/F: pycodestyle errors and pyflakes (unused imports, undefined names)
+# I: import sorting, UP: syntax modernised for Python 3.12, B: likely bugs
+# SIM: simplifications, C4: unnecessary dict()/list() calls
+select = ["E", "F", "I", "UP", "B", "SIM", "C4"]

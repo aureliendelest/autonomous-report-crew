@@ -1,0 +1,19 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.10
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-yaml
+      - id: end-of-file-fixer
+        # prompts/ are read at runtime by the agents and the evaluation: never rewrite them.
+        exclude: ^(prompts/|outputs/|eval/topics\.yaml|eval/results)
+      - id: trailing-whitespace
+        # Two trailing spaces are a line break in Markdown: keep them.
+        args: [--markdown-linebreak-ext=md]
+        exclude: ^(prompts/|outputs/|eval/topics\.yaml|eval/results)

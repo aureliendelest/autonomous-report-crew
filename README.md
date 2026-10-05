@@ -9,9 +9,17 @@ Tavily for web search.
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install ".[dev]"          # dependencies + dev tools (ruff, pre-commit)
+pre-commit install            # run ruff automatically on every commit
 cp .env.example .env
 # then edit .env and add your GROQ_API_KEY and TAVILY_API_KEY
+```
+
+Dependencies and tool configuration live in `pyproject.toml`. Check the code with:
+
+```bash
+ruff check .            # lint
+ruff format --check .   # formatting
 ```
 
 ## Usage

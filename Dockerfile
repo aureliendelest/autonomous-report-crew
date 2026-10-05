@@ -8,10 +8,10 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Dependencies first: this layer is only rebuilt when requirements.txt changes,
-# not on every code edit.
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+# Dependencies first: this layer is only rebuilt when pyproject.toml changes,
+# not on every code edit. Only runtime dependencies are installed (no [dev] extra).
+COPY pyproject.toml .
+RUN pip install .
 
 RUN useradd --create-home --uid 1000 app
 
