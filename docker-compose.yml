@@ -1,0 +1,28 @@
+services:
+  app:
+    build: .
+    image: autonomous-report-crew
+    ports:
+      # Bound to localhost only: with a bare "8501:8501" anyone on the same
+      # network could open the app and run reports on your API quota.
+      - "127.0.0.1:8501:8501"
+    # Keys are injected at runtime from your local .env, never baked into the image.
+    env_file: .env
+    volumes:
+      # A container's filesystem is ephemeral: without these, reports and the
+      # Tavily cache would vanish when it stops.
+      - ./outputs:/app/outputs
+      - ./.cache:/app/.cache
+      # Keeps eval/results.json and results.md on the host so a resumed eval finds them.
+      # This also means eval/ is read from the host, not from the image.
+      - ./eval:/app/eval
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3

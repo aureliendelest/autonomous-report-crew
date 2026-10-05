@@ -23,6 +23,25 @@ python main.py --topic "Olympique de Marseille"
 The generated report is saved under `/outputs`. `--domain` defaults to `football`
 (the only domain wired up so far); it selects which prompt set under `/prompts` to use.
 
+## Docker
+
+Requires Docker Desktop. The same image runs the Streamlit app and the CLI.
+
+```bash
+cp .env.example .env          # then add your own API keys
+docker compose up --build     # Streamlit on http://localhost:8501
+
+# CLI or evaluation, using the same image
+docker compose run --rm app python main.py --topic "Olympique de Marseille"
+docker compose run --rm app python -m eval.run_eval
+```
+
+- API keys are read from your local `.env` at runtime and are never copied into the image.
+- The app is published on `127.0.0.1` only, so it is not reachable from other machines.
+- `outputs/`, `.cache/` and `eval/` are mounted from the host, so reports, the Tavily
+  cache and evaluation results survive the container.
+- Code and prompts are baked into the image: rebuild (`docker compose up --build`) after editing them.
+
 ## How it works
 
 Three agents run in sequence for each report:

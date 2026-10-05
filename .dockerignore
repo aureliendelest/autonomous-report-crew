@@ -1,0 +1,26 @@
+# Secrets: must never end up in an image layer
+.env
+.env.*
+
+# Version control and local tooling
+.git
+.gitignore
+.claude
+.vscode
+.idea
+
+# Python artifacts
+.venv
+__pycache__
+*.pyc
+
+# Runtime data, mounted as volumes instead (see docker-compose.yml)
+outputs
+.cache
+eval/results.json
+eval/results.md
+
+# Not needed to run the app
+docs
+README.md
+LICENSE
