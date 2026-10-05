@@ -22,7 +22,7 @@ Usage : python -m eval.run_eval
 """
 import json
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -140,6 +140,14 @@ def calculer_cout(trace: dict) -> dict:
     }
 
 
+def calculer_modeles(trace: dict) -> dict:
+    # Si un run bascule de modèle en cours de route (quota Groq épuisé), sa
+    # comparaison avec les autres ablations est faussée : on garde la liste
+    # pour pouvoir le repérer dans le tableau.
+    modeles = {p for s in trace["steps"] for p in s.get("providers", [])}
+    return {"modeles": sorted(modeles)}
+
+
 def evaluer_un_run(report_path: Path) -> dict:
     try:
         report_md = report_path.read_text(encoding="utf-8")
@@ -153,6 +161,7 @@ def evaluer_un_run(report_path: Path) -> dict:
         metriques.update(calculer_sources_perimees(report_md, trace))
         metriques.update(calculer_couverture_format(report_md, trace["domain"]))
         metriques.update(calculer_cout(trace))
+        metriques.update(calculer_modeles(trace))
         return metriques
     except Exception as e:
         return {"erreur": f"calcul des métriques impossible : {e}"}
@@ -170,9 +179,9 @@ def ecrire_resultats(resultats: list[dict]) -> None:
     lines = ["# Résultats d'évaluation — session 5", ""]
     lines.append(
         "| Domaine | Ablation | Runs | Échecs | URLs fabriquées (moy.) | Sources périmées (moy.) | "
-        "Format complet | Tokens (moy.) | Tavily (moy.) | Durée s (moy.) |"
+        "Format complet | Tokens (moy.) | Tavily (moy.) | Durée s (moy.) | Modèles (nb de runs) | Runs multi-modèles |"
     )
-    lines.append("|---|---|---|---|---|---|---|---|---|---|")
+    lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
 
     for (domain, label), lignes in sorted(groupes.items()):
         ok = [l for l in lignes if "erreur" not in l]
@@ -184,15 +193,31 @@ def ecrire_resultats(resultats: list[dict]) -> None:
             tokens_moy = sum(l["input_tokens"] + l["output_tokens"] for l in ok) / len(ok)
             tavily_moy = sum(l["appels_tavily"] for l in ok) / len(ok)
             duree_moy = sum(l["duree_s"] for l in ok) / len(ok)
+            par_modele = Counter(m.split("/")[-1] for l in ok for m in l.get("modeles", []))
+            modeles_txt = ", ".join(f"{m}×{n}" for m, n in sorted(par_modele.items())) or "—"
+            multi = sum(1 for l in ok if len(l.get("modeles", [])) > 1)
             lines.append(
                 f"| {domain} | {label} | {len(lignes)} | {echecs} | {urls_fab_moy:.1f} | {perimees_moy:.1f} | "
-                f"{format_complet}/{len(ok)} | {tokens_moy:.0f} | {tavily_moy:.1f} | {duree_moy:.0f} |"
+                f"{format_complet}/{len(ok)} | {tokens_moy:.0f} | {tavily_moy:.1f} | {duree_moy:.0f} | "
+                f"{modeles_txt} | {multi}/{len(ok)} |"
             )
         else:
-            lines.append(f"| {domain} | {label} | {len(lignes)} | {echecs} | — | — | — | — | — | — |")
+            lines.append(f"| {domain} | {label} | {len(lignes)} | {echecs} | — | — | — | — | — | — | — | — |")
 
     lines.append("")
     lines.append(f"*Généré le {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}.*")
+    lines.append("")
+    dates = sorted({r["date"] for r in resultats if "date" in r})
+    if len(dates) > 1:
+        lines.append(
+            f"*⚠️ Ces résultats mélangent des runs de {len(dates)} jours différents ({', '.join(dates)}) : "
+            "les métriques de fraîcheur ne sont pas strictement comparables entre eux.*"
+        )
+        lines.append("")
+    lines.append(
+        "*Un modèle différent d'une ablation à l'autre (colonnes « Modèles » et « Runs multi-modèles ») "
+        "fausse la comparaison : à interpréter avec prudence quand les modèles ne sont pas les mêmes.*"
+    )
     lines.append("")
     seuils = ", ".join(
         f"{d} = {_seuil_perime_jours(d)}j" for d in sorted(SECTIONS_ATTENDUES)
@@ -215,21 +240,39 @@ def ecrire_resultats(resultats: list[dict]) -> None:
     (EVAL_DIR / "results.md").write_text("\n".join(lines), encoding="utf-8")
 
 
+def charger_resultats_existants() -> list[dict]:
+    path = EVAL_DIR / "results.json"
+    if not path.exists():
+        return []
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 def main():
     topics = charger_topics(TOPICS_PATH)
-    resultats = []
+    # Reprise : on garde les runs déjà réussis et on retente seulement ceux
+    # qui avaient échoué ou n'ont pas encore été faits. Les résultats sont
+    # réécrits après chaque run, donc une interruption ne perd rien.
+    resultats = [r for r in charger_resultats_existants() if "erreur" not in r]
+    deja_faits = {(r["topic"], r["label"]) for r in resultats}
+    if deja_faits:
+        print(f"[eval] reprise : {len(deja_faits)} runs déjà réussis, ils seront sautés")
 
     for t in topics:
         for config in ABLATIONS:
+            if (t["topic"], config.label) in deja_faits:
+                continue
             print(f"[eval] {t['domain']} / {t['topic']} / {config.label}")
             try:
                 report_path = run_pipeline(t["topic"], t["domain"], use_cache=True, config=config)
                 metriques = evaluer_un_run(report_path)
             except Exception as e:
                 metriques = {"erreur": f"run_pipeline a échoué : {e}"}
-            resultats.append({"topic": t["topic"], "domain": t["domain"], "tag": t["tag"], "label": config.label, **metriques})
+            resultats.append({
+                "topic": t["topic"], "domain": t["domain"], "tag": t["tag"], "label": config.label,
+                "date": datetime.now().strftime("%Y-%m-%d"), **metriques,
+            })
+            ecrire_resultats(resultats)
 
-    ecrire_resultats(resultats)
     print(f"\nRésultats écrits dans {EVAL_DIR / 'results.json'} et {EVAL_DIR / 'results.md'}")
 
 

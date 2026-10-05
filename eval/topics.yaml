@@ -20,6 +20,12 @@
 - topic: "Racing Club de Lens"
   domain: football
   tag: "cas standard, sert de témoin/baseline stable"
+- topic: "Manchester United"
+  domain: football
+  tag: "club international, sources majoritairement en anglais — teste la synthèse cross-langue vers un rapport en français"
+- topic: "Real Madrid"
+  domain: football
+  tag: "club international, sources majoritairement en espagnol/anglais, forte actualité médiatique"
 
 - topic: "Adoption de l'IA générative dans la banque de détail"
   domain: ia-entreprise
