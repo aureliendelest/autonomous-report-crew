@@ -28,9 +28,7 @@ TAVILY_TOOL_SCHEMA = {
 
 def get_tavily_client() -> TavilyClient:
     if not os.environ.get("TAVILY_API_KEY"):
-        raise RuntimeError(
-            "TAVILY_API_KEY n'est pas défini. Copie .env.example vers .env et renseigne ta clé."
-        )
+        raise RuntimeError("TAVILY_API_KEY n'est pas défini. Copie .env.example vers .env et renseigne ta clé.")
     return TavilyClient()
 
 
@@ -66,9 +64,7 @@ def _write_cache(key: str, response: dict) -> None:
     path.write_text(json.dumps(response), encoding="utf-8")
 
 
-def _fetch_from_tavily(
-    query: str, topic: str, time_range: str, max_results: int, search_depth: str
-) -> dict:
+def _fetch_from_tavily(query: str, topic: str, time_range: str, max_results: int, search_depth: str) -> dict:
     client = get_tavily_client()
 
     for attempt in range(MAX_TIMEOUT_RETRIES + 1):

@@ -1,7 +1,7 @@
 import json
 import os
 import time
-from typing import Callable
+from collections.abc import Callable
 
 from dotenv import load_dotenv
 from groq import Groq, RateLimitError
@@ -46,9 +46,7 @@ _exhausted_until: dict[str, float] = {}
 
 def get_groq_client() -> Groq:
     if not os.environ.get("GROQ_API_KEY"):
-        raise RuntimeError(
-            "GROQ_API_KEY n'est pas défini. Copie .env.example vers .env et renseigne ta clé."
-        )
+        raise RuntimeError("GROQ_API_KEY n'est pas défini. Copie .env.example vers .env et renseigne ta clé.")
     return Groq()
 
 
@@ -76,9 +74,7 @@ def _create_with_retry(client, **kwargs):
             time.sleep(wait_seconds)
 
 
-def _create_completion(
-    messages: list[dict], tools: list[dict] | None, max_tokens: int, force_no_tool: bool = False
-):
+def _create_completion(messages: list[dict], tools: list[dict] | None, max_tokens: int, force_no_tool: bool = False):
     """Essaie chaque modèle Groq de GROQ_MODELS pas actuellement à quota (voir
     `_exhausted_until`), puis bascule sur OpenRouter si tous le sont.
 
@@ -95,7 +91,7 @@ def _create_completion(
     n'est plus fourni) tout en interdisant au modèle de s'en resservir, via
     `tool_choice="none"`.
     """
-    groq_kwargs = dict(max_tokens=max_tokens, reasoning_effort="low")
+    groq_kwargs = {"max_tokens": max_tokens, "reasoning_effort": "low"}
     if tools:
         groq_kwargs["tools"] = tools
         if force_no_tool:
@@ -129,7 +125,7 @@ def _create_completion(
 def _create_openrouter_completion(
     openrouter_client, messages: list[dict], tools: list[dict] | None, max_tokens: int, force_no_tool: bool
 ):
-    openrouter_kwargs = dict(max_tokens=max_tokens)
+    openrouter_kwargs = {"max_tokens": max_tokens}
     if tools:
         openrouter_kwargs["tools"] = tools
         if force_no_tool:

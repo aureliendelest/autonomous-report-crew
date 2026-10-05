@@ -5,13 +5,9 @@ from src.orchestrator import resume_from_trace, run_pipeline
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Génère un rapport de veille automatisé."
-    )
+    parser = argparse.ArgumentParser(description="Génère un rapport de veille automatisé.")
     source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument(
-        "--topic", help="Sujet du rapport, ex: 'Olympique de Marseille'"
-    )
+    source.add_argument("--topic", help="Sujet du rapport, ex: 'Olympique de Marseille'")
     source.add_argument(
         "--from-trace",
         metavar="FICHIER",
@@ -45,7 +41,7 @@ def main():
             run_pipeline(args.topic, args.domain, use_cache=not args.no_cache)
     except (RuntimeError, ValueError) as e:
         print(f"Erreur : {e}")
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 if __name__ == "__main__":

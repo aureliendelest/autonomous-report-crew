@@ -1,6 +1,6 @@
 import re
+from collections.abc import Callable
 from datetime import date
-from typing import Callable
 
 from . import llm_client, prompts
 from .web_search import TAVILY_TOOL_SCHEMA, web_search
@@ -10,6 +10,7 @@ URL_RE = re.compile(r"https?://[^\s\)\]\>\"'】]+")
 
 def _extract_urls(text: str) -> set[str]:
     return {url.rstrip(".,;:)]}>»") for url in URL_RE.findall(text)}
+
 
 def _today() -> str:
     return date.today().strftime("%d %B %Y")
@@ -33,9 +34,7 @@ def run_chercheur(
             "est déjà validé, complète uniquement ce qui manque."
         )
     if feedback:
-        user_message += (
-            f"\n\nLe critique a demandé des recherches complémentaires :\n{feedback}"
-        )
+        user_message += f"\n\nLe critique a demandé des recherches complémentaires :\n{feedback}"
 
     search_config = prompts.load_search_config(domain)
     seen_urls: set[str] = set()
@@ -67,21 +66,15 @@ def run_chercheur(
             "— URLs non vérifiées :** les URLs suivantes apparaissent ci-dessus "
             "mais ne proviennent d'aucun résultat de recherche web réel obtenu "
             "durant cette session ; elles sont probablement fabriquées et ne "
-            "doivent pas être considérées comme fiables :\n"
-            + "\n".join(f"- {url}" for url in sorted(fabricated_urls))
+            "doivent pas être considérées comme fiables :\n" + "\n".join(f"- {url}" for url in sorted(fabricated_urls))
         )
 
     return research
 
 
-def run_critique(
-    topic: str, domain: str, research: str, on_call: Callable[[dict], None] | None = None
-) -> str:
+def run_critique(topic: str, domain: str, research: str, on_call: Callable[[dict], None] | None = None) -> str:
     system = prompts.load_prompt(domain, "critique")
-    user_message = (
-        f"Nous sommes le {_today()}.\n\n"
-        f"Sujet : {topic}\n\nRecherches du Chercheur :\n{research}"
-    )
+    user_message = f"Nous sommes le {_today()}.\n\nSujet : {topic}\n\nRecherches du Chercheur :\n{research}"
     return llm_client.call_agent(system, user_message, on_call=on_call)
 
 
@@ -95,8 +88,7 @@ def run_redacteur(
 ) -> str:
     system = prompts.load_prompt(domain, "redacteur")
     user_message = (
-        f"Nous sommes le {_today()}.\n\n"
-        f"Sujet : {topic}\n\nRecherches :\n{research}\n\nAvis du Critique :\n{critique}"
+        f"Nous sommes le {_today()}.\n\nSujet : {topic}\n\nRecherches :\n{research}\n\nAvis du Critique :\n{critique}"
     )
     if incomplete:
         user_message += (

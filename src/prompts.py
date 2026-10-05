@@ -19,10 +19,7 @@ def load_prompt(domain: str, agent_name: str) -> str:
 def load_search_config(domain: str) -> dict:
     path = PROMPTS_DIR / domain / "search.json"
     if not path.exists():
-        print(
-            f"[prompts] search.json manquant pour le domaine '{domain}', "
-            "utilisation de la config par défaut."
-        )
+        print(f"[prompts] search.json manquant pour le domaine '{domain}', utilisation de la config par défaut.")
         return DEFAULT_SEARCH_CONFIG
     return json.loads(path.read_text(encoding="utf-8"))
 
