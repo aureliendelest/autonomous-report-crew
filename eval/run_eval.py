@@ -20,10 +20,12 @@ Limites connues :
 
 Usage : python -m eval.run_eval
 """
+
 import json
+import logging
 import sys
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
@@ -32,9 +34,12 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.agents import _extract_urls
+from src.logging_config import setup_logging
 from src.models import RunConfig
 from src.orchestrator import run_pipeline
 from src.prompts import load_search_config
+
+logger = logging.getLogger("eval.run_eval")
 
 EVAL_DIR = Path(__file__).resolve().parent
 TOPICS_PATH = EVAL_DIR / "topics.yaml"
@@ -48,7 +53,14 @@ ABLATIONS = [
 
 SECTIONS_ATTENDUES = {
     "football": ["Résumé", "Points clés", "Résultats récents", "Actualités", "Prochaine échéance", "Sources"],
-    "ia-entreprise": ["Résumé", "Cas d'usage", "ROI et résultats observés", "Freins à l'adoption", "Actualités récentes", "Sources"],
+    "ia-entreprise": [
+        "Résumé",
+        "Cas d'usage",
+        "ROI et résultats observés",
+        "Freins à l'adoption",
+        "Actualités récentes",
+        "Sources",
+    ],
 }
 
 # Le seuil "périmé" est dérivé du time_range de recherche de chaque domaine
@@ -97,7 +109,7 @@ def calculer_urls_fabriquees(report_md: str, trace: dict) -> dict:
 def calculer_sources_perimees(report_md: str, trace: dict) -> dict:
     urls_rapport = _extract_urls(report_md)
     _, dates_par_url = _urls_vues_et_dates(trace)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     seuil_jours = _seuil_perime_jours(trace["domain"])
 
     perimees, fraiches, date_inconnue = 0, 0, 0
@@ -168,9 +180,7 @@ def evaluer_un_run(report_path: Path) -> dict:
 
 
 def ecrire_resultats(resultats: list[dict]) -> None:
-    (EVAL_DIR / "results.json").write_text(
-        json.dumps(resultats, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    (EVAL_DIR / "results.json").write_text(json.dumps(resultats, indent=2, ensure_ascii=False), encoding="utf-8")
 
     groupes: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for r in resultats:
@@ -184,18 +194,18 @@ def ecrire_resultats(resultats: list[dict]) -> None:
     lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
 
     for (domain, label), lignes in sorted(groupes.items()):
-        ok = [l for l in lignes if "erreur" not in l]
+        ok = [ligne for ligne in lignes if "erreur" not in ligne]
         echecs = len(lignes) - len(ok)
         if ok:
-            urls_fab_moy = sum(len(l["urls_fabriquees"]) for l in ok) / len(ok)
-            perimees_moy = sum(l["sources_perimees"] for l in ok) / len(ok)
-            format_complet = sum(1 for l in ok if not l["sections_manquantes"])
-            tokens_moy = sum(l["input_tokens"] + l["output_tokens"] for l in ok) / len(ok)
-            tavily_moy = sum(l["appels_tavily"] for l in ok) / len(ok)
-            duree_moy = sum(l["duree_s"] for l in ok) / len(ok)
-            par_modele = Counter(m.split("/")[-1] for l in ok for m in l.get("modeles", []))
+            urls_fab_moy = sum(len(ligne["urls_fabriquees"]) for ligne in ok) / len(ok)
+            perimees_moy = sum(ligne["sources_perimees"] for ligne in ok) / len(ok)
+            format_complet = sum(1 for ligne in ok if not ligne["sections_manquantes"])
+            tokens_moy = sum(ligne["input_tokens"] + ligne["output_tokens"] for ligne in ok) / len(ok)
+            tavily_moy = sum(ligne["appels_tavily"] for ligne in ok) / len(ok)
+            duree_moy = sum(ligne["duree_s"] for ligne in ok) / len(ok)
+            par_modele = Counter(m.split("/")[-1] for ligne in ok for m in ligne.get("modeles", []))
             modeles_txt = ", ".join(f"{m}×{n}" for m, n in sorted(par_modele.items())) or "—"
-            multi = sum(1 for l in ok if len(l.get("modeles", [])) > 1)
+            multi = sum(1 for ligne in ok if len(ligne.get("modeles", [])) > 1)
             lines.append(
                 f"| {domain} | {label} | {len(lignes)} | {echecs} | {urls_fab_moy:.1f} | {perimees_moy:.1f} | "
                 f"{format_complet}/{len(ok)} | {tokens_moy:.0f} | {tavily_moy:.1f} | {duree_moy:.0f} | "
@@ -205,7 +215,7 @@ def ecrire_resultats(resultats: list[dict]) -> None:
             lines.append(f"| {domain} | {label} | {len(lignes)} | {echecs} | — | — | — | — | — | — | — | — |")
 
     lines.append("")
-    lines.append(f"*Généré le {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}.*")
+    lines.append(f"*Généré le {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}.*")
     lines.append("")
     dates = sorted({r["date"] for r in resultats if "date" in r})
     if len(dates) > 1:
@@ -219,13 +229,11 @@ def ecrire_resultats(resultats: list[dict]) -> None:
         "fausse la comparaison : à interpréter avec prudence quand les modèles ne sont pas les mêmes.*"
     )
     lines.append("")
-    seuils = ", ".join(
-        f"{d} = {_seuil_perime_jours(d)}j" for d in sorted(SECTIONS_ATTENDUES)
-    )
+    seuils = ", ".join(f"{d} = {_seuil_perime_jours(d)}j" for d in sorted(SECTIONS_ATTENDUES))
     lines.append(
         f"*Seuil de fraîcheur par domaine ({seuils}) : dérivé du `time_range` de recherche de "
         "chaque domaine (`prompts/<domaine>/search.json`) avec une marge, plutôt qu'un seuil unique "
-        "— sinon presque toutes les sources ia-entreprise (`time_range=\"year\"`) seraient marquées "
+        '— sinon presque toutes les sources ia-entreprise (`time_range="year"`) seraient marquées '
         "périmées à tort, alors que retrouver du contenu vieux de plusieurs mois est attendu sur ce "
         "domaine.*"
     )
@@ -248,6 +256,7 @@ def charger_resultats_existants() -> list[dict]:
 
 
 def main():
+    setup_logging()
     topics = charger_topics(TOPICS_PATH)
     # Reprise : on garde les runs déjà réussis et on retente seulement ceux
     # qui avaient échoué ou n'ont pas encore été faits. Les résultats sont
@@ -255,25 +264,41 @@ def main():
     resultats = [r for r in charger_resultats_existants() if "erreur" not in r]
     deja_faits = {(r["topic"], r["label"]) for r in resultats}
     if deja_faits:
-        print(f"[eval] reprise : {len(deja_faits)} runs déjà réussis, ils seront sautés")
+        logger.info(
+            "reprise : %d runs déjà réussis, ils seront sautés",
+            len(deja_faits),
+            extra={"runs_skipped": len(deja_faits)},
+        )
 
     for t in topics:
         for config in ABLATIONS:
             if (t["topic"], config.label) in deja_faits:
                 continue
-            print(f"[eval] {t['domain']} / {t['topic']} / {config.label}")
+            logger.info(
+                "%s / %s / %s",
+                t["domain"],
+                t["topic"],
+                config.label,
+                extra={"domain": t["domain"], "topic": t["topic"], "ablation": config.label},
+            )
             try:
                 report_path = run_pipeline(t["topic"], t["domain"], use_cache=True, config=config)
                 metriques = evaluer_un_run(report_path)
             except Exception as e:
                 metriques = {"erreur": f"run_pipeline a échoué : {e}"}
-            resultats.append({
-                "topic": t["topic"], "domain": t["domain"], "tag": t["tag"], "label": config.label,
-                "date": datetime.now().strftime("%Y-%m-%d"), **metriques,
-            })
+            resultats.append(
+                {
+                    "topic": t["topic"],
+                    "domain": t["domain"],
+                    "tag": t["tag"],
+                    "label": config.label,
+                    "date": datetime.now().strftime("%Y-%m-%d"),
+                    **metriques,
+                }
+            )
             ecrire_resultats(resultats)
 
-    print(f"\nRésultats écrits dans {EVAL_DIR / 'results.json'} et {EVAL_DIR / 'results.md'}")
+    logger.info("Résultats écrits dans %s et %s", EVAL_DIR / "results.json", EVAL_DIR / "results.md")
 
 
 if __name__ == "__main__":

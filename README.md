@@ -9,9 +9,17 @@ Tavily for web search.
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install ".[dev]"          # dependencies + dev tools (ruff, pre-commit)
+pre-commit install            # run ruff automatically on every commit
 cp .env.example .env
 # then edit .env and add your GROQ_API_KEY and TAVILY_API_KEY
+```
+
+Dependencies and tool configuration live in `pyproject.toml`. Check the code with:
+
+```bash
+ruff check .            # lint
+ruff format --check .   # formatting
 ```
 
 ## Usage
@@ -22,6 +30,53 @@ python main.py --topic "Olympique de Marseille"
 
 The generated report is saved under `/outputs`. `--domain` defaults to `football`
 (the only domain wired up so far); it selects which prompt set under `/prompts` to use.
+
+### Logging
+
+Diagnostic events (rate limits, model fallback, search timeouts...) are logged to stderr.
+Two optional environment variables (set them in your shell or in `.env`) tune them:
+
+| Variable | Values | Default |
+|---|---|---|
+| `LOG_LEVEL` | `DEBUG`, `INFO`, `WARNING`, `ERROR` | `INFO` |
+| `LOG_FORMAT` | `text` (readable), `json` (one JSON object per line) | `text` |
+
+```bash
+LOG_FORMAT=json python main.py --topic "Olympique de Marseille" 2> run.log.jsonl
+```
+
+## Docker
+
+Requires Docker Desktop. The same image runs the Streamlit app and the CLI.
+
+```bash
+cp .env.example .env          # then add your own API keys
+docker compose up --build     # Streamlit on http://localhost:8501
+
+# CLI or evaluation, using the same image
+docker compose run --rm app python main.py --topic "Olympique de Marseille"
+docker compose run --rm app python -m eval.run_eval
+```
+
+- API keys are read from your local `.env` at runtime and are never copied into the image.
+- The app is published on `127.0.0.1` only, so it is not reachable from other machines.
+- `outputs/`, `.cache/` and `eval/` are mounted from the host, so reports, the Tavily
+  cache and evaluation results survive the container.
+- Code and prompts are baked into the image: rebuild (`docker compose up --build`) after editing them.
+
+## Tests and CI
+
+```bash
+pytest    # no network, no API keys needed, nothing is written to outputs/ or .cache/
+```
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every pull request to `main` and on every
+push to `main`:
+
+- `lint-test`: `ruff check`, `ruff format --check` and `pytest`
+- `docker`: builds the image to check the `Dockerfile` (nothing is published)
+
+`main` is protected: changes go through a pull request, and both checks must pass before merging.
 
 ## How it works
 

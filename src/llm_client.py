@@ -1,13 +1,16 @@
 import json
+import logging
 import os
 import time
-from typing import Callable
+from collections.abc import Callable
 
 from dotenv import load_dotenv
 from groq import Groq, RateLimitError
 from openai import OpenAI
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 # Modèles Groq essayés dans l'ordre (le plus gros/meilleur en premier), chacun
 # ayant son propre quota séparé sur le plan gratuit. Groq expose deux quotas
@@ -46,9 +49,7 @@ _exhausted_until: dict[str, float] = {}
 
 def get_groq_client() -> Groq:
     if not os.environ.get("GROQ_API_KEY"):
-        raise RuntimeError(
-            "GROQ_API_KEY n'est pas défini. Copie .env.example vers .env et renseigne ta clé."
-        )
+        raise RuntimeError("GROQ_API_KEY n'est pas défini. Copie .env.example vers .env et renseigne ta clé.")
     return Groq()
 
 
@@ -72,13 +73,15 @@ def _create_with_retry(client, **kwargs):
                 # recharger : on laisse l'appelant basculer sur le modèle
                 # suivant plutôt que de bloquer le pipeline en silence.
                 raise
-            print(f"[llm_client] limite de débit Groq atteinte, nouvelle tentative dans {wait_seconds:.1f}s")
+            logger.warning(
+                "limite de débit Groq atteinte, nouvelle tentative dans %.1fs",
+                wait_seconds,
+                extra={"wait_s": wait_seconds},
+            )
             time.sleep(wait_seconds)
 
 
-def _create_completion(
-    messages: list[dict], tools: list[dict] | None, max_tokens: int, force_no_tool: bool = False
-):
+def _create_completion(messages: list[dict], tools: list[dict] | None, max_tokens: int, force_no_tool: bool = False):
     """Essaie chaque modèle Groq de GROQ_MODELS pas actuellement à quota (voir
     `_exhausted_until`), puis bascule sur OpenRouter si tous le sont.
 
@@ -95,7 +98,7 @@ def _create_completion(
     n'est plus fourni) tout en interdisant au modèle de s'en resservir, via
     `tool_choice="none"`.
     """
-    groq_kwargs = dict(max_tokens=max_tokens, reasoning_effort="low")
+    groq_kwargs = {"max_tokens": max_tokens, "reasoning_effort": "low"}
     if tools:
         groq_kwargs["tools"] = tools
         if force_no_tool:
@@ -112,9 +115,12 @@ def _create_completion(
                 wait_seconds = float(e.response.headers.get("retry-after", 60))
                 _exhausted_until[model] = time.time() + wait_seconds
                 is_last_model = i == len(remaining_models) - 1
-                print(
-                    f"[llm_client] quota épuisé pour {model} (retente dans {wait_seconds:.0f}s)"
-                    + ("" if is_last_model else ", essai du modèle suivant")
+                logger.warning(
+                    "quota épuisé pour %s (retente dans %.0fs)%s",
+                    model,
+                    wait_seconds,
+                    "" if is_last_model else ", essai du modèle suivant",
+                    extra={"model": model, "wait_s": wait_seconds},
                 )
                 if not is_last_model:
                     continue
@@ -122,14 +128,17 @@ def _create_completion(
     openrouter_client = get_openrouter_client()
     if openrouter_client is None:
         raise RuntimeError("Tous les modèles Groq sont à quota et OPENROUTER_API_KEY n'est pas défini.")
-    print("[llm_client] quota épuisé pour tous les modèles Groq, bascule sur OpenRouter")
+    logger.warning(
+        "quota épuisé pour tous les modèles Groq, bascule sur OpenRouter",
+        extra={"model": OPENROUTER_MODEL},
+    )
     return _create_openrouter_completion(openrouter_client, messages, tools, max_tokens, force_no_tool)
 
 
 def _create_openrouter_completion(
     openrouter_client, messages: list[dict], tools: list[dict] | None, max_tokens: int, force_no_tool: bool
 ):
-    openrouter_kwargs = dict(max_tokens=max_tokens)
+    openrouter_kwargs = {"max_tokens": max_tokens}
     if tools:
         openrouter_kwargs["tools"] = tools
         if force_no_tool:
@@ -145,7 +154,7 @@ def _create_openrouter_completion(
         if response.choices:
             return response, OPENROUTER_MODEL
         if attempt < MAX_OPENROUTER_RETRIES:
-            print("[llm_client] réponse OpenRouter invalide, nouvelle tentative")
+            logger.warning("réponse OpenRouter invalide, nouvelle tentative", extra={"attempt": attempt + 1})
     return response, OPENROUTER_MODEL
 
 
@@ -250,7 +259,11 @@ def call_agent(
         # n'est plus fourni — il faut donc garder `tools` et forcer via
         # `tool_choice="none"` à la place.
         if tool_call_count >= MAX_TOOL_CALLS:
-            print(f"[llm_client] limite de {MAX_TOOL_CALLS} appels d'outils atteinte, réponse forcée")
+            logger.warning(
+                "limite de %d appels d'outils atteinte, réponse forcée",
+                MAX_TOOL_CALLS,
+                extra={"limit": MAX_TOOL_CALLS},
+            )
             messages.append(
                 {
                     "role": "user",

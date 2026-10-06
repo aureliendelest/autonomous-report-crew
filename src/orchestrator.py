@@ -1,9 +1,9 @@
 import json
 import re
 import unicodedata
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Callable
 
 from pydantic import ValidationError
 
@@ -79,7 +79,7 @@ def _format_audit_log(topic: str, domain: str, trace_steps: list[dict]) -> str:
         )
         for tool_call in trace_step["tool_calls"]:
             cached = "cache" if tool_call["cached"] else "web"
-            lines.append(f"- recherche ({cached}) : \"{tool_call['query']}\" — {tool_call['result_count']} résultat(s)")
+            lines.append(f'- recherche ({cached}) : "{tool_call["query"]}" — {tool_call["result_count"]} résultat(s)')
         if trace_step.get("critique_result"):
             result = trace_step["critique_result"]
             lines.append(f"- statut : {result['status']}")
@@ -109,9 +109,12 @@ def _run_critique_and_redact(
         notify("[Rédacteur] rédaction du rapport final (Critique désactivé)")
         on_call, summarize = _new_step_recorder()
         report = agents.run_redacteur(
-            topic, domain, research,
+            topic,
+            domain,
+            research,
             "Le Critique a été désactivé pour ce run (ablation).",
-            incomplete=False, on_call=on_call,
+            incomplete=False,
+            on_call=on_call,
         )
         trace_steps.append(summarize("redacteur", 1, text=report))
         return report, trace_steps
@@ -144,15 +147,11 @@ def _run_critique_and_redact(
 
     notify("[Rédacteur] rédaction du rapport final")
     if critique_result.gaps:
-        critique_summary = "Points signalés par le Critique :\n" + "\n".join(
-            f"- {gap}" for gap in critique_result.gaps
-        )
+        critique_summary = "Points signalés par le Critique :\n" + "\n".join(f"- {gap}" for gap in critique_result.gaps)
     else:
         critique_summary = "Le Critique n'a signalé aucun point à vérifier."
     on_call, summarize = _new_step_recorder()
-    report = agents.run_redacteur(
-        topic, domain, research, critique_summary, incomplete=not validated, on_call=on_call
-    )
+    report = agents.run_redacteur(topic, domain, research, critique_summary, incomplete=not validated, on_call=on_call)
     trace_steps.append(summarize("redacteur", 1, text=report))
 
     return report, trace_steps
