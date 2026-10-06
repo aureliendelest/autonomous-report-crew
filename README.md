@@ -64,6 +64,20 @@ docker compose run --rm app python -m eval.run_eval
   cache and evaluation results survive the container.
 - Code and prompts are baked into the image: rebuild (`docker compose up --build`) after editing them.
 
+## Tests and CI
+
+```bash
+pytest    # no network, no API keys needed, nothing is written to outputs/ or .cache/
+```
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every pull request to `main` and on every
+push to `main`:
+
+- `lint-test`: `ruff check`, `ruff format --check` and `pytest`
+- `docker`: builds the image to check the `Dockerfile` (nothing is published)
+
+`main` is protected: changes go through a pull request, and both checks must pass before merging.
+
 ## How it works
 
 Three agents run in sequence for each report:

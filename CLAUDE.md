@@ -60,6 +60,9 @@ substantive content.
 - Dependencies and tool config: `pyproject.toml` (install with
   `pip install ".[dev]"`). Code quality: ruff (lint + format) enforced by
   pre-commit hooks; run `pre-commit install` once per clone.
+- Tests and CI: pytest (`tests/`, fully mocked: no network, no API keys, nothing
+  written to the real `outputs/` or `.cache/`) and GitHub Actions
+  (`.github/workflows/ci.yml`: jobs `lint-test` and `docker`).
 - Logging: stdlib `logging`, configured by `src/logging_config.py`
   (`LOG_LEVEL`, `LOG_FORMAT=text|json`). Use `logger = logging.getLogger(__name__)`
   and never `print()` for diagnostics (ruff enforces it). Pass structured
@@ -77,6 +80,8 @@ substantive content.
 Dockerfile, docker-compose.yml, .dockerignore → container setup
 pyproject.toml → dependencies, ruff config
 .pre-commit-config.yaml → commit-time checks
+/tests → pytest suite (fake agents and fake Tavily, see tests/conftest.py)
+.github/workflows/ci.yml → continuous integration
 README.md
 
 
@@ -88,7 +93,9 @@ README.md
   (e.g. "add the critical agent", "research loop corrected").
 - Always check `git status` before committing to avoid including unwanted
   files (`.env`, temporary files).
-- Push to `main` only when a feature has been tested and works.
+- Never push directly to `main` (it is a protected branch): work on a branch,
+  open a pull request, and merge once the CI checks `lint-test` and `docker`
+  pass. Run `pytest` and `ruff check .` before pushing.
 - Never commit an API key or secret — always go through `.env`.
 - All project documentation (this file, `/docs`, prompts comments, etc.)
   must be written in English.

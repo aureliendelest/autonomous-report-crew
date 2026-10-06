@@ -21,6 +21,7 @@ dependencies = [
 dev = [
     "ruff>=0.16",
     "pre-commit>=4.0",
+    "pytest>=8.0",
 ]
 
 # This is an application, not a library: there is no package to build. An empty
@@ -38,4 +39,10 @@ target-version = "py312"
 # I: import sorting, UP: syntax modernised for Python 3.12, B: likely bugs
 # SIM: simplifications, C4: unnecessary dict()/list() calls
 # T20: no print() (use logging), LOG/G: correct use of the logging module
-select = ["E", "F", "I", "UP", "B", "SIM", "C4", "T20", "LOG", "G"]
+# PT: pytest style
+select = ["E", "F", "I", "UP", "B", "SIM", "C4", "T20", "LOG", "G", "PT"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Lets the tests do `from src import ...` without installing the project.
+pythonpath = ["."]
